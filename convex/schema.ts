@@ -6,10 +6,13 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     apiKeyHash: v.string(),
+    authUserId: v.optional(v.string()),
+    claimedAt: v.optional(v.number()),
     createdAt: v.number(),
     status: v.string(),
   })
     .index("by_api_key_hash", ["apiKeyHash"])
+    .index("by_auth_user", ["authUserId"])
     .index("by_email", ["email"]),
 
   stores: defineTable({

@@ -3,6 +3,7 @@ import {
   queryGeneric as query,
 } from "convex/server";
 import { v } from "convex/values";
+import { authComponent } from "./betterAuth/auth";
 
 const checkoutStatuses = [
   "created",
@@ -77,6 +78,96 @@ export const getDeveloperByApiKeyHash = query({
       name: developer.name,
       email: developer.email,
       status: developer.status,
+    };
+  },
+});
+
+export const getOrClaimDeveloperForCurrentUser = mutation({
+  args: {},
+  returns: v.object({
+    id: v.string(),
+    name: v.string(),
+    email: v.string(),
+    status: v.string(),
+    authUserId: v.string(),
+    claimedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  }),
+  handler: async (ctx) => {
+    const user = await authComponent.safeGetAuthUser(ctx);
+    if (!user) {
+      throw new Error("Unauthorized");
+    }
+
+    const email = user.email?.trim().toLowerCase();
+    if (!email) {
+      throw new Error("Authenticated user has no email");
+    }
+
+    const now = Date.now();
+    const existingByAuthUser = await ctx.db
+      .query("developers")
+      .withIndex("by_auth_user", (q) => q.eq("authUserId", user._id))
+      .first();
+
+    if (existingByAuthUser) {
+      return {
+        id: existingByAuthUser._id,
+        name: existingByAuthUser.name,
+        email: existingByAuthUser.email,
+        status: existingByAuthUser.status,
+        authUserId: user._id,
+        claimedAt: existingByAuthUser.claimedAt,
+        createdAt: existingByAuthUser.createdAt,
+      };
+    }
+
+    const matchingDeveloper = (await ctx.db.query("developers").collect()).find(
+      (developer) => developer.email.trim().toLowerCase() === email,
+    );
+
+    if (matchingDeveloper) {
+      if (
+        matchingDeveloper.authUserId &&
+        matchingDeveloper.authUserId !== user._id
+      ) {
+        throw new Error("Developer email is already claimed");
+      }
+
+      await ctx.db.patch(matchingDeveloper._id, {
+        authUserId: user._id,
+        claimedAt: matchingDeveloper.claimedAt ?? now,
+      });
+
+      return {
+        id: matchingDeveloper._id,
+        name: matchingDeveloper.name,
+        email: matchingDeveloper.email,
+        status: matchingDeveloper.status,
+        authUserId: user._id,
+        claimedAt: matchingDeveloper.claimedAt ?? now,
+        createdAt: matchingDeveloper.createdAt,
+      };
+    }
+
+    const developerId = await ctx.db.insert("developers", {
+      name: user.name || email,
+      email,
+      apiKeyHash: "",
+      authUserId: user._id,
+      claimedAt: now,
+      createdAt: now,
+      status: "active",
+    });
+
+    return {
+      id: developerId,
+      name: user.name || email,
+      email,
+      status: "active",
+      authUserId: user._id,
+      claimedAt: now,
+      createdAt: now,
     };
   },
 });

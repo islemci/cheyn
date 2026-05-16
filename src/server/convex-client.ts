@@ -10,6 +10,9 @@ const refs = {
   getDeveloperByApiKeyHash: makeFunctionReference<"query">(
     "payments.js:getDeveloperByApiKeyHash",
   ),
+  getOrClaimDeveloperForCurrentUser: makeFunctionReference<"mutation">(
+    "payments.js:getOrClaimDeveloperForCurrentUser",
+  ),
   rotateDeveloperApiKey: makeFunctionReference<"mutation">(
     "payments.js:rotateDeveloperApiKey",
   ),
