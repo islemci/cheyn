@@ -5,14 +5,20 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "npx convex dev --once && next start",
+    "worker": "tsx src/server/worker.ts",
+    "convex:dev": "convex dev",
     "lint": "biome check",
     "format": "biome format --write"
   },
   "dependencies": {
+    "convex": "^1.39.1",
+    "digest-fetch": "^3.1.1",
     "next": "16.2.6",
+    "node-fetch": "^3.3.2",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
@@ -22,6 +28,7 @@
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "tailwindcss": "^4",
+    "tsx": "^4.22.0",
     "typescript": "^5"
   }
 }

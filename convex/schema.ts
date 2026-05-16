@@ -1,0 +1,95 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  developers: defineTable({
+    name: v.string(),
+    email: v.string(),
+    apiKeyHash: v.string(),
+    createdAt: v.number(),
+    status: v.string(),
+  })
+    .index("by_api_key_hash", ["apiKeyHash"])
+    .index("by_email", ["email"]),
+
+  stores: defineTable({
+    developerId: v.string(),
+    name: v.string(),
+    withdrawAddress: v.string(),
+    webhookUrl: v.optional(v.string()),
+    webhookSecret: v.string(),
+    createdAt: v.number(),
+    status: v.string(),
+  })
+    .index("by_developer", ["developerId"])
+    .index("by_developer_status", ["developerId", "status"]),
+
+  checkouts: defineTable({
+    storeId: v.string(),
+    developerId: v.string(),
+    amountAtomic: v.string(),
+    receivedAtomic: v.string(),
+    currency: v.string(),
+    metadata: v.optional(v.any()),
+    successUrl: v.optional(v.string()),
+    cancelUrl: v.optional(v.string()),
+    subaddress: v.string(),
+    subaddressIndexMajor: v.number(),
+    subaddressIndexMinor: v.number(),
+    status: v.string(),
+    confirmations: v.number(),
+    txHash: v.optional(v.string()),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_developer", ["developerId"])
+    .index("by_store", ["storeId"])
+    .index("by_status", ["status"])
+    .index("by_subaddress_index", [
+      "subaddressIndexMajor",
+      "subaddressIndexMinor",
+    ]),
+
+  paymentEvents: defineTable({
+    checkoutId: v.string(),
+    txHash: v.string(),
+    amountAtomic: v.string(),
+    confirmations: v.number(),
+    height: v.optional(v.number()),
+    seenAt: v.number(),
+    confirmedAt: v.optional(v.number()),
+  })
+    .index("by_checkout", ["checkoutId"])
+    .index("by_checkout_tx", ["checkoutId", "txHash"]),
+
+  payouts: defineTable({
+    checkoutId: v.string(),
+    developerId: v.string(),
+    storeId: v.string(),
+    amountAtomic: v.string(),
+    withdrawAddress: v.string(),
+    status: v.string(),
+    txHash: v.optional(v.string()),
+    createdAt: v.number(),
+    sentAt: v.optional(v.number()),
+    failedReason: v.optional(v.string()),
+    nextRetryAt: v.optional(v.number()),
+  })
+    .index("by_checkout", ["checkoutId"])
+    .index("by_status", ["status"]),
+
+  webhookAttempts: defineTable({
+    storeId: v.string(),
+    checkoutId: v.optional(v.string()),
+    event: v.string(),
+    url: v.string(),
+    status: v.string(),
+    statusCode: v.optional(v.number()),
+    responseBody: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_store", ["storeId"])
+    .index("by_checkout", ["checkoutId"]),
+});
