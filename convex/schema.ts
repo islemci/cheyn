@@ -39,11 +39,14 @@ export default defineSchema({
     status: v.string(),
     confirmations: v.number(),
     txHash: v.optional(v.string()),
+    idempotencyKey: v.optional(v.string()),
+    requestFingerprint: v.optional(v.string()),
     expiresAt: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_developer", ["developerId"])
+    .index("by_developer_idempotency", ["developerId", "idempotencyKey"])
     .index("by_store", ["storeId"])
     .index("by_status", ["status"])
     .index("by_subaddress_index", [
@@ -68,12 +71,19 @@ export default defineSchema({
     developerId: v.string(),
     storeId: v.string(),
     amountAtomic: v.string(),
+    grossAmountAtomic: v.optional(v.string()),
+    platformFeeAtomic: v.optional(v.string()),
+    networkReserveAtomic: v.optional(v.string()),
+    netPayoutAtomic: v.optional(v.string()),
+    platformFeeBps: v.optional(v.number()),
+    maxTotalFeeBps: v.optional(v.number()),
     withdrawAddress: v.string(),
     status: v.string(),
     txHash: v.optional(v.string()),
     createdAt: v.number(),
     sentAt: v.optional(v.number()),
     failedReason: v.optional(v.string()),
+    failureCount: v.optional(v.number()),
     nextRetryAt: v.optional(v.number()),
   })
     .index("by_checkout", ["checkoutId"])
@@ -88,6 +98,12 @@ export default defineSchema({
     statusCode: v.optional(v.number()),
     responseBody: v.optional(v.string()),
     error: v.optional(v.string()),
+    payload: v.optional(v.any()),
+    secret: v.optional(v.string()),
+    attemptNumber: v.optional(v.number()),
+    nextRetryAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    deliveredAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_store", ["storeId"])

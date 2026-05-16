@@ -44,15 +44,31 @@ export function calculatePayoutAmount(args: {
   const maxTotalFee = (amount * BigInt(args.maxTotalFeeBps)) / BigInt(10_000);
   const maxReserve = maxTotalFee - platformFee;
   const configuredReserve = BigInt(args.networkFeeReserveAtomic);
+  const cappedReserve = maxReserve > BigInt(0) ? maxReserve : BigInt(0);
   const networkFeeReserve =
-    maxReserve > BigInt(0) && configuredReserve > maxReserve
-      ? maxReserve
-      : configuredReserve;
-
-  return subtractAtomic(
+    configuredReserve > cappedReserve ? cappedReserve : configuredReserve;
+  const netPayoutAtomic = subtractAtomic(
     subtractAtomic(args.amountAtomic, platformFee.toString()),
     networkFeeReserve.toString(),
   );
+
+  return {
+    grossAmountAtomic: args.amountAtomic,
+    maxTotalFeeBps: args.maxTotalFeeBps,
+    netPayoutAtomic,
+    networkReserveAtomic: networkFeeReserve.toString(),
+    platformFeeAtomic: platformFee.toString(),
+    platformFeeBps: args.platformFeeBps,
+  };
+}
+
+export function calculateLegacyPayoutAmount(args: {
+  amountAtomic: string;
+  maxTotalFeeBps: number;
+  networkFeeReserveAtomic: string;
+  platformFeeBps: number;
+}) {
+  return calculatePayoutAmount(args).netPayoutAtomic;
 }
 
 export function atomicToDisplay(amountAtomic: string) {

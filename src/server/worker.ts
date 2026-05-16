@@ -34,13 +34,24 @@ type Payout = {
   storeId: string;
   amountAtomic: string;
   failedReason?: string;
+  failureCount?: number;
+  netPayoutAtomic?: string;
   withdrawAddress: string;
   txHash?: string;
 };
 
-const wallet = createWalletClient();
-const PAYOUT_RETRY_DELAY_MS = 5 * 60 * 1000;
+type WebhookAttempt = {
+  id: string;
+  attemptNumber?: number;
+  checkoutId?: string;
+  event: string;
+  payload: Record<string, unknown>;
+  secret: string;
+  storeId: string;
+  url: string;
+};
 
+const wallet = createWalletClient();
 function transferKey(transfer: {
   subaddressIndexMajor: number;
   subaddressIndexMinor: number;
@@ -142,13 +153,16 @@ async function scanPayments() {
         continue;
       }
 
+      const payoutBreakdown = calculatePayoutAmount({
+        amountAtomic: checkout.amountAtomic,
+        maxTotalFeeBps: config.MAX_TOTAL_FEE_BPS,
+        networkFeeReserveAtomic: config.PAYOUT_NETWORK_FEE_RESERVE_ATOMIC,
+        platformFeeBps: config.PLATFORM_FEE_BPS,
+      });
+
       await convex.mutation(convex.refs.createPayoutIfMissing, {
-        amountAtomic: calculatePayoutAmount({
-          amountAtomic: checkout.amountAtomic,
-          maxTotalFeeBps: config.MAX_TOTAL_FEE_BPS,
-          networkFeeReserveAtomic: config.PAYOUT_NETWORK_FEE_RESERVE_ATOMIC,
-          platformFeeBps: config.PLATFORM_FEE_BPS,
-        }),
+        ...payoutBreakdown,
+        amountAtomic: payoutBreakdown.netPayoutAtomic,
         checkoutId: checkout.id,
         developerId: checkout.developerId,
         now,
@@ -195,13 +209,51 @@ async function processPayouts() {
         networkFeeReserveAtomic: config.PAYOUT_NETWORK_FEE_RESERVE_ATOMIC,
         platformFeeBps: config.PLATFORM_FEE_BPS,
       });
+      const netPayoutAtomic = currentPayoutAmount.netPayoutAtomic;
 
-      if (payout.amountAtomic !== currentPayoutAmount) {
+      if (
+        payout.netPayoutAtomic !== netPayoutAtomic ||
+        payout.amountAtomic !== netPayoutAtomic
+      ) {
         await convex.mutation(convex.refs.recalculatePayoutAmount, {
-          amountAtomic: currentPayoutAmount,
+          ...currentPayoutAmount,
+          amountAtomic: netPayoutAtomic,
           now,
           payoutId: payout.id,
         });
+      }
+
+      if (!config.PAYOUTS_ENABLED) {
+        await convex.mutation(convex.refs.updatePayoutStatus, {
+          failedReason: "Payouts are disabled",
+          now,
+          payoutId: payout.id,
+          status: "manual_review",
+        });
+        continue;
+      }
+
+      if (
+        config.MAX_PAYOUT_ATOMIC &&
+        BigInt(netPayoutAtomic) > BigInt(config.MAX_PAYOUT_ATOMIC)
+      ) {
+        await convex.mutation(convex.refs.updatePayoutStatus, {
+          failedReason: "Payout exceeds MAX_PAYOUT_ATOMIC",
+          now,
+          payoutId: payout.id,
+          status: "manual_review",
+        });
+        continue;
+      }
+
+      if ((payout.failureCount ?? 0) >= config.PAYOUT_MAX_FAILURES) {
+        await convex.mutation(convex.refs.updatePayoutStatus, {
+          failedReason: "Payout exceeded max failure count",
+          now,
+          payoutId: payout.id,
+          status: "manual_review",
+        });
+        continue;
       }
 
       await convex.mutation(convex.refs.updatePayoutStatus, {
@@ -212,7 +264,7 @@ async function processPayouts() {
 
       const result = await wallet.transfer({
         address: payout.withdrawAddress,
-        amountAtomic: currentPayoutAmount,
+        amountAtomic: netPayoutAtomic,
       });
 
       await convex.mutation(convex.refs.updatePayoutStatus, {
@@ -240,21 +292,63 @@ async function processPayouts() {
         url: checkoutWithStore.store.webhookUrl,
       });
     } catch (error) {
+      const failureCount = (payout.failureCount ?? 0) + 1;
       await convex.mutation(convex.refs.updatePayoutStatus, {
         failedReason:
           error instanceof Error ? error.message : "Unknown payout error",
-        nextRetryAt: now + PAYOUT_RETRY_DELAY_MS,
+        failureCount,
+        nextRetryAt: now + config.PAYOUT_RETRY_DELAY_MS * failureCount,
         now,
         payoutId: payout.id,
-        status: "failed",
+        status:
+          failureCount >= config.PAYOUT_MAX_FAILURES
+            ? "manual_review"
+            : "failed",
       });
     }
+  }
+}
+
+async function processWebhookRetries() {
+  const config = getConfig();
+  const now = Date.now();
+  const attempts = await convex.query<WebhookAttempt[]>(
+    convex.refs.listDueWebhookAttempts,
+    { now },
+  );
+
+  for (const attempt of attempts) {
+    const attemptNumber = (attempt.attemptNumber ?? 0) + 1;
+    if (attemptNumber > config.WEBHOOK_MAX_FAILURES) {
+      await convex.mutation(convex.refs.updateWebhookAttempt, {
+        attemptId: attempt.id,
+        attemptNumber,
+        error: "Webhook exceeded max failure count",
+        lastError: "Webhook exceeded max failure count",
+        status: "failed",
+      });
+      continue;
+    }
+
+    await deliverWebhook({
+      attemptId: attempt.id,
+      attemptNumber,
+      checkoutId: attempt.checkoutId,
+      event: attempt.event,
+      maxFailures: config.WEBHOOK_MAX_FAILURES,
+      payload: attempt.payload,
+      retryDelayMs: config.WEBHOOK_RETRY_DELAY_MS,
+      secret: attempt.secret,
+      storeId: attempt.storeId,
+      url: attempt.url,
+    });
   }
 }
 
 export async function runWorkerOnce() {
   await scanPayments();
   await processPayouts();
+  await processWebhookRetries();
 }
 
 async function main() {

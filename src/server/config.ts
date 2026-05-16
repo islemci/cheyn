@@ -33,8 +33,18 @@ const EnvSchema = z.object({
   MONERO_WALLET_MODE: z.enum(["real", "mock"]).default("mock"),
   NEXT_PUBLIC_CONVEX_URL: z.string().url().optional(),
   MAX_TOTAL_FEE_BPS: optionalNumber(500),
+  MAX_PAYOUT_ATOMIC: z.string().optional(),
+  MIN_CHECKOUT_AMOUNT_ATOMIC: z.string().default("0"),
   PLATFORM_FEE_BPS: optionalNumber(0),
+  PAYOUTS_ENABLED: z
+    .string()
+    .optional()
+    .transform((value) => value !== "false"),
   PAYOUT_NETWORK_FEE_RESERVE_ATOMIC: z.string().default("20000000"),
+  PAYOUT_RETRY_DELAY_MS: optionalNumber(5 * 60 * 1000),
+  PAYOUT_MAX_FAILURES: optionalNumber(3),
+  WEBHOOK_RETRY_DELAY_MS: optionalNumber(60 * 1000),
+  WEBHOOK_MAX_FAILURES: optionalNumber(5),
   REQUIRED_CONFIRMATIONS: optionalNumber(10),
   WORKER_POLL_INTERVAL_MS: optionalNumber(15_000),
 });

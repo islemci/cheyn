@@ -16,6 +16,7 @@ export const CreateStoreSchema = z.object({
 export const CreateCheckoutSchema = z.object({
   amountAtomic: z.string().regex(/^[1-9]\d*$/),
   cancelUrl: url.optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   storeId: z.string().min(1),
   successUrl: url.optional(),

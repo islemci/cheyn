@@ -10,6 +10,9 @@ const refs = {
   getDeveloperByApiKeyHash: makeFunctionReference<"query">(
     "payments.js:getDeveloperByApiKeyHash",
   ),
+  rotateDeveloperApiKey: makeFunctionReference<"mutation">(
+    "payments.js:rotateDeveloperApiKey",
+  ),
   createStore: makeFunctionReference<"mutation">("payments.js:createStore"),
   getStoreForDeveloper: makeFunctionReference<"query">(
     "payments.js:getStoreForDeveloper",
@@ -19,6 +22,9 @@ const refs = {
   ),
   getCheckoutForDeveloper: makeFunctionReference<"query">(
     "payments.js:getCheckoutForDeveloper",
+  ),
+  getCheckoutByIdempotency: makeFunctionReference<"query">(
+    "payments.js:getCheckoutByIdempotency",
   ),
   listOpenCheckouts: makeFunctionReference<"query">(
     "payments.js:listOpenCheckouts",
@@ -38,14 +44,33 @@ const refs = {
   listPendingPayouts: makeFunctionReference<"query">(
     "payments.js:listPendingPayouts",
   ),
+  getPayoutWithCheckout: makeFunctionReference<"query">(
+    "payments.js:getPayoutWithCheckout",
+  ),
   updatePayoutStatus: makeFunctionReference<"mutation">(
     "payments.js:updatePayoutStatus",
   ),
+  markPayoutManualReview: makeFunctionReference<"mutation">(
+    "payments.js:markPayoutManualReview",
+  ),
+  retryPayout: makeFunctionReference<"mutation">("payments.js:retryPayout"),
   getCheckoutWithStore: makeFunctionReference<"query">(
     "payments.js:getCheckoutWithStore",
   ),
+  getCheckoutAdmin: makeFunctionReference<"query">(
+    "payments.js:getCheckoutAdmin",
+  ),
   recordWebhookAttempt: makeFunctionReference<"mutation">(
     "payments.js:recordWebhookAttempt",
+  ),
+  listDueWebhookAttempts: makeFunctionReference<"query">(
+    "payments.js:listDueWebhookAttempts",
+  ),
+  updateWebhookAttempt: makeFunctionReference<"mutation">(
+    "payments.js:updateWebhookAttempt",
+  ),
+  retryWebhookAttempt: makeFunctionReference<"mutation">(
+    "payments.js:retryWebhookAttempt",
   ),
 };
 
