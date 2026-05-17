@@ -213,7 +213,9 @@ export function createRealWalletClient(): WalletClient {
           | { major?: number; minor?: number }
           | undefined;
         const txHash = String(transfer.txid ?? transfer.tx_hash ?? "");
-        if (!index || !txHash) {
+        const address =
+          typeof transfer.address === "string" ? transfer.address : undefined;
+        if (!txHash || (!index && !address)) {
           return [];
         }
 
@@ -224,12 +226,9 @@ export function createRealWalletClient(): WalletClient {
             confirmations: Number(transfer.confirmations ?? 0),
             height:
               typeof transfer.height === "number" ? transfer.height : undefined,
-            subaddressIndexMajor: Number(index.major ?? 0),
-            subaddressIndexMinor: Number(index.minor ?? 0),
-            address:
-              typeof transfer.address === "string"
-                ? transfer.address
-                : undefined,
+            subaddressIndexMajor: index ? Number(index.major ?? 0) : undefined,
+            subaddressIndexMinor: index ? Number(index.minor ?? 0) : undefined,
+            address,
           },
         ];
       });

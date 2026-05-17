@@ -31,6 +31,11 @@ export default defineSchema({
     storeId: v.string(),
     developerId: v.string(),
     amountAtomic: v.string(),
+    amountUsdCents: v.optional(v.string()),
+    pricingCurrency: v.optional(v.string()),
+    xmrUsdPriceMicro: v.optional(v.string()),
+    xmrUsdPriceFetchedAt: v.optional(v.number()),
+    xmrUsdPriceSource: v.optional(v.string()),
     receivedAtomic: v.string(),
     currency: v.string(),
     metadata: v.optional(v.any()),
@@ -112,4 +117,13 @@ export default defineSchema({
   })
     .index("by_store", ["storeId"])
     .index("by_checkout", ["checkoutId"]),
+
+  priceQuotes: defineTable({
+    fetchedAt: v.number(),
+    lastUpdatedAt: v.optional(v.number()),
+    priceUsdMicro: v.string(),
+    quoteCurrency: v.string(),
+    source: v.string(),
+    symbol: v.string(),
+  }).index("by_symbol_quote", ["symbol", "quoteCurrency"]),
 });

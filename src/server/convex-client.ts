@@ -13,21 +13,36 @@ const refs = {
   getOrClaimDeveloperForCurrentUser: makeFunctionReference<"mutation">(
     "payments.js:getOrClaimDeveloperForCurrentUser",
   ),
+  getDashboardForCurrentUser: makeFunctionReference<"query">(
+    "payments.js:getDashboardForCurrentUser",
+  ),
   rotateDeveloperApiKey: makeFunctionReference<"mutation">(
     "payments.js:rotateDeveloperApiKey",
   ),
   createStore: makeFunctionReference<"mutation">("payments.js:createStore"),
+  createStoreForCurrentUser: makeFunctionReference<"mutation">(
+    "payments.js:createStoreForCurrentUser",
+  ),
   getStoreForDeveloper: makeFunctionReference<"query">(
     "payments.js:getStoreForDeveloper",
   ),
   createCheckout: makeFunctionReference<"mutation">(
     "payments.js:createCheckout",
   ),
+  getLatestPriceQuote: makeFunctionReference<"query">(
+    "payments.js:getLatestPriceQuote",
+  ),
+  upsertPriceQuote: makeFunctionReference<"mutation">(
+    "payments.js:upsertPriceQuote",
+  ),
   getCheckoutForDeveloper: makeFunctionReference<"query">(
     "payments.js:getCheckoutForDeveloper",
   ),
   getCheckoutByIdempotency: makeFunctionReference<"query">(
     "payments.js:getCheckoutByIdempotency",
+  ),
+  getWebhookAttemptForCheckoutEvent: makeFunctionReference<"query">(
+    "payments.js:getWebhookAttemptForCheckoutEvent",
   ),
   listOpenCheckouts: makeFunctionReference<"query">(
     "payments.js:listOpenCheckouts",
@@ -46,6 +61,12 @@ const refs = {
   ),
   listPendingPayouts: makeFunctionReference<"query">(
     "payments.js:listPendingPayouts",
+  ),
+  listPayoutCollectionCandidatesForDeveloper: makeFunctionReference<"query">(
+    "payments.js:listPayoutCollectionCandidatesForDeveloper",
+  ),
+  listPayoutCollectionCandidates: makeFunctionReference<"query">(
+    "payments.js:listPayoutCollectionCandidates",
   ),
   getPayoutWithCheckout: makeFunctionReference<"query">(
     "payments.js:getPayoutWithCheckout",

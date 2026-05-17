@@ -20,8 +20,8 @@ export type WalletTransfer = {
   amountAtomic: string;
   confirmations: number;
   height?: number;
-  subaddressIndexMajor: number;
-  subaddressIndexMinor: number;
+  subaddressIndexMajor?: number;
+  subaddressIndexMinor?: number;
   address?: string;
 };
 

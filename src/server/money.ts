@@ -17,6 +17,17 @@ export function isAtLeastAtomic(value: string, minimum: string) {
   return BigInt(value) >= BigInt(minimum);
 }
 
+export function isAtLeastAtomicWithTolerance(args: {
+  minimum: string;
+  toleranceAtomic: string;
+  value: string;
+}) {
+  const value = BigInt(args.value);
+  const minimum = BigInt(args.minimum);
+  const tolerance = BigInt(args.toleranceAtomic);
+  return value >= minimum || minimum - value <= tolerance;
+}
+
 export function subtractFee(amountAtomic: string, feeBps: number) {
   const amount = BigInt(amountAtomic);
   const fee = (amount * BigInt(feeBps)) / BigInt(10_000);
@@ -77,4 +88,36 @@ export function atomicToDisplay(amountAtomic: string) {
   const fractional = amount % ATOMIC_UNITS_PER_XMR;
   const fraction = fractional.toString().padStart(12, "0").replace(/0+$/, "");
   return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+export function usdCentsToAtomic(args: {
+  amountUsdCents: string;
+  xmrUsdPriceMicro: string;
+}) {
+  if (!/^[1-9]\d*$/.test(args.amountUsdCents)) {
+    throw new Error("amountUsdCents must be a positive integer string");
+  }
+  if (!/^[1-9]\d*$/.test(args.xmrUsdPriceMicro)) {
+    throw new Error("xmrUsdPriceMicro must be a positive integer string");
+  }
+
+  const usdMicro = BigInt(args.amountUsdCents) * BigInt(10_000);
+  const priceMicro = BigInt(args.xmrUsdPriceMicro);
+  const numerator = usdMicro * ATOMIC_UNITS_PER_XMR;
+
+  return ((numerator + priceMicro - BigInt(1)) / priceMicro).toString();
+}
+
+export function usdDisplayToCents(amount: string) {
+  if (!/^[1-9]\d*(\.\d{1,2})?$/.test(amount)) {
+    throw new Error(
+      "USD amount must be a positive decimal string with up to 2 decimals",
+    );
+  }
+
+  const [dollars, cents = ""] = amount.split(".");
+  return (
+    BigInt(dollars) * BigInt(100) +
+    BigInt(cents.padEnd(2, "0"))
+  ).toString();
 }

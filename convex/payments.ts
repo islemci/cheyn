@@ -1,8 +1,11 @@
 import {
+  type GenericMutationCtx,
+  type GenericQueryCtx,
   mutationGeneric as mutation,
   queryGeneric as query,
 } from "convex/server";
 import { v } from "convex/values";
+import type { DataModel } from "./_generated/dataModel";
 import { authComponent } from "./betterAuth/auth";
 
 const checkoutStatuses = [
@@ -29,6 +32,26 @@ function assertAllowed(value: string, allowed: string[], label: string) {
   if (!allowed.includes(value)) {
     throw new Error(`Invalid ${label}: ${value}`);
   }
+}
+
+async function getCurrentDeveloper(
+  ctx: GenericQueryCtx<DataModel> | GenericMutationCtx<DataModel>,
+) {
+  const user = await authComponent.safeGetAuthUser(ctx);
+  if (!user) {
+    throw new Error("Unauthorized");
+  }
+
+  const developer = await ctx.db
+    .query("developers")
+    .withIndex("by_auth_user", (q) => q.eq("authUserId", user._id))
+    .first();
+
+  if (!developer) {
+    throw new Error("Developer not claimed");
+  }
+
+  return developer;
 }
 
 export const createDeveloper = mutation({
@@ -172,6 +195,107 @@ export const getOrClaimDeveloperForCurrentUser = mutation({
   },
 });
 
+export const getDashboardForCurrentUser = query({
+  args: {},
+  returns: v.any(),
+  handler: async (ctx) => {
+    const developer = await getCurrentDeveloper(ctx);
+    const stores = await ctx.db
+      .query("stores")
+      .withIndex("by_developer", (q) => q.eq("developerId", developer._id))
+      .collect();
+    const checkouts = await ctx.db
+      .query("checkouts")
+      .withIndex("by_developer", (q) => q.eq("developerId", developer._id))
+      .collect();
+    const payouts = (await ctx.db.query("payouts").collect()).filter(
+      (payout) => payout.developerId === developer._id,
+    );
+    const storeIds = new Set(stores.map((store) => store._id));
+    const webhookAttempts = (
+      await ctx.db.query("webhookAttempts").collect()
+    ).filter((attempt) => storeIds.has(attempt.storeId as never));
+
+    const confirmedVolumeAtomic = checkouts
+      .filter((checkout) =>
+        ["confirmed", "payout_pending", "paid_out"].includes(checkout.status),
+      )
+      .reduce((sum, checkout) => sum + BigInt(checkout.receivedAtomic), 0n);
+    const pendingPayoutAtomic = payouts
+      .filter((payout) =>
+        ["pending", "processing", "failed", "manual_review"].includes(
+          payout.status,
+        ),
+      )
+      .reduce((sum, payout) => sum + BigInt(payout.amountAtomic), 0n);
+    const deliveredWebhooks = webhookAttempts.filter(
+      (attempt) => attempt.status === "sent",
+    ).length;
+
+    return {
+      developer: {
+        id: developer._id,
+        claimedAt: developer.claimedAt,
+        createdAt: developer.createdAt,
+        email: developer.email,
+        name: developer.name,
+        status: developer.status,
+      },
+      checkouts: checkouts
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 25)
+        .map((checkout) => ({ id: checkout._id, ...checkout })),
+      payouts: payouts
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 25)
+        .map((payout) => ({ id: payout._id, ...payout })),
+      stats: {
+        checkoutCount: checkouts.length,
+        confirmedVolumeAtomic: confirmedVolumeAtomic.toString(),
+        confirmingCount: checkouts.filter((checkout) =>
+          ["seen", "confirming"].includes(checkout.status),
+        ).length,
+        pendingPayoutAtomic: pendingPayoutAtomic.toString(),
+        pendingPayoutCount: payouts.filter((payout) =>
+          ["pending", "processing", "failed", "manual_review"].includes(
+            payout.status,
+          ),
+        ).length,
+        webhookSuccessRate:
+          webhookAttempts.length === 0
+            ? null
+            : Math.round((deliveredWebhooks / webhookAttempts.length) * 1000) /
+              10,
+      },
+      stores: stores.map((store) => ({
+        id: store._id,
+        createdAt: store.createdAt,
+        name: store.name,
+        status: store.status,
+        webhookUrl: store.webhookUrl,
+        withdrawAddress: store.withdrawAddress,
+      })),
+      webhookAttempts: webhookAttempts
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 25)
+        .map((attempt) => ({
+          id: attempt._id,
+          attemptNumber: attempt.attemptNumber,
+          checkoutId: attempt.checkoutId,
+          createdAt: attempt.createdAt,
+          deliveredAt: attempt.deliveredAt,
+          event: attempt.event,
+          lastError: attempt.lastError,
+          nextRetryAt: attempt.nextRetryAt,
+          status: attempt.status,
+          statusCode: attempt.statusCode,
+          storeId: attempt.storeId,
+          url: attempt.url,
+        })),
+    };
+  },
+});
+
 export const rotateDeveloperApiKey = mutation({
   args: {
     apiKeyHash: v.string(),
@@ -205,6 +329,31 @@ export const createStore = mutation({
   handler: async (ctx, args) => {
     const storeId = await ctx.db.insert("stores", {
       developerId: args.developerId,
+      name: args.name,
+      withdrawAddress: args.withdrawAddress,
+      webhookUrl: args.webhookUrl,
+      webhookSecret: args.webhookSecret,
+      createdAt: args.now,
+      status: "active",
+    });
+
+    return { storeId };
+  },
+});
+
+export const createStoreForCurrentUser = mutation({
+  args: {
+    name: v.string(),
+    withdrawAddress: v.string(),
+    webhookUrl: v.optional(v.string()),
+    webhookSecret: v.string(),
+    now: v.number(),
+  },
+  returns: v.object({ storeId: v.string() }),
+  handler: async (ctx, args) => {
+    const developer = await getCurrentDeveloper(ctx);
+    const storeId = await ctx.db.insert("stores", {
+      developerId: developer._id,
       name: args.name,
       withdrawAddress: args.withdrawAddress,
       webhookUrl: args.webhookUrl,
@@ -254,13 +403,18 @@ export const createCheckout = mutation({
     storeId: v.string(),
     developerId: v.string(),
     amountAtomic: v.string(),
+    amountUsdCents: v.optional(v.string()),
     metadata: v.optional(v.any()),
+    pricingCurrency: v.optional(v.string()),
     successUrl: v.optional(v.string()),
     cancelUrl: v.optional(v.string()),
     subaddress: v.string(),
     subaddressIndexMajor: v.number(),
     subaddressIndexMinor: v.number(),
     requiredConfirmations: v.number(),
+    xmrUsdPriceFetchedAt: v.optional(v.number()),
+    xmrUsdPriceMicro: v.optional(v.string()),
+    xmrUsdPriceSource: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
     requestFingerprint: v.optional(v.string()),
     expiresAt: v.number(),
@@ -300,6 +454,11 @@ export const createCheckout = mutation({
       storeId: args.storeId,
       developerId: args.developerId,
       amountAtomic: args.amountAtomic,
+      amountUsdCents: args.amountUsdCents,
+      pricingCurrency: args.pricingCurrency,
+      xmrUsdPriceFetchedAt: args.xmrUsdPriceFetchedAt,
+      xmrUsdPriceMicro: args.xmrUsdPriceMicro,
+      xmrUsdPriceSource: args.xmrUsdPriceSource,
       receivedAtomic: "0",
       currency: "XMR",
       metadata: args.metadata,
@@ -319,6 +478,61 @@ export const createCheckout = mutation({
     });
 
     return { checkoutId, created: true };
+  },
+});
+
+export const getLatestPriceQuote = query({
+  args: {
+    quoteCurrency: v.string(),
+    symbol: v.string(),
+  },
+  returns: v.union(v.null(), v.any()),
+  handler: async (ctx, args) => {
+    const quote = await ctx.db
+      .query("priceQuotes")
+      .withIndex("by_symbol_quote", (q) => q.eq("symbol", args.symbol))
+      .first();
+
+    return quote && quote.quoteCurrency === args.quoteCurrency
+      ? { id: quote._id, ...quote }
+      : null;
+  },
+});
+
+export const upsertPriceQuote = mutation({
+  args: {
+    fetchedAt: v.number(),
+    lastUpdatedAt: v.optional(v.number()),
+    priceUsdMicro: v.string(),
+    source: v.string(),
+    symbol: v.string(),
+  },
+  returns: v.object({ quoteId: v.string() }),
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("priceQuotes")
+      .withIndex("by_symbol_quote", (q) => q.eq("symbol", args.symbol))
+      .first();
+
+    if (existing && existing.quoteCurrency === "USD") {
+      await ctx.db.patch(existing._id, {
+        fetchedAt: args.fetchedAt,
+        lastUpdatedAt: args.lastUpdatedAt,
+        priceUsdMicro: args.priceUsdMicro,
+        source: args.source,
+      });
+      return { quoteId: existing._id };
+    }
+
+    const quoteId = await ctx.db.insert("priceQuotes", {
+      fetchedAt: args.fetchedAt,
+      lastUpdatedAt: args.lastUpdatedAt,
+      priceUsdMicro: args.priceUsdMicro,
+      quoteCurrency: "USD",
+      source: args.source,
+      symbol: args.symbol,
+    });
+    return { quoteId };
   },
 });
 
@@ -348,6 +562,24 @@ export const getCheckoutByIdempotency = query({
         .collect()
     ).find((row) => row.idempotencyKey === args.idempotencyKey);
     return checkout ? { id: checkout._id, ...checkout } : null;
+  },
+});
+
+export const getWebhookAttemptForCheckoutEvent = query({
+  args: {
+    checkoutId: v.string(),
+    event: v.string(),
+  },
+  returns: v.union(v.null(), v.any()),
+  handler: async (ctx, args) => {
+    const attempt = (
+      await ctx.db
+        .query("webhookAttempts")
+        .withIndex("by_checkout", (q) => q.eq("checkoutId", args.checkoutId))
+        .collect()
+    ).find((row) => row.event === args.event);
+
+    return attempt ? { id: attempt._id, ...attempt } : null;
   },
 });
 
@@ -553,6 +785,83 @@ export const listPendingPayouts = query({
       id: payout._id,
       ...payout,
     }));
+  },
+});
+
+export const listPayoutCollectionCandidatesForDeveloper = query({
+  args: { developerId: v.string() },
+  returns: v.array(v.any()),
+  handler: async (ctx, args) => {
+    const checkouts = await ctx.db
+      .query("checkouts")
+      .withIndex("by_developer", (q) => q.eq("developerId", args.developerId))
+      .collect();
+    const candidates = [];
+
+    for (const checkout of checkouts) {
+      if (
+        !["waiting_for_payment", "seen", "confirming", "confirmed"].includes(
+          checkout.status,
+        )
+      ) {
+        continue;
+      }
+
+      const existingPayout = await ctx.db
+        .query("payouts")
+        .withIndex("by_checkout", (q) => q.eq("checkoutId", checkout._id))
+        .first();
+      if (existingPayout) {
+        continue;
+      }
+
+      const store = await ctx.db.get(checkout.storeId as never);
+      if (!store || store.developerId !== args.developerId) {
+        continue;
+      }
+
+      candidates.push({
+        checkout: { id: checkout._id, ...checkout },
+        store: { id: store._id, ...store },
+      });
+    }
+
+    return candidates;
+  },
+});
+
+export const listPayoutCollectionCandidates = query({
+  args: {},
+  returns: v.array(v.any()),
+  handler: async (ctx) => {
+    const checkouts = await ctx.db.query("checkouts").collect();
+    const candidates = [];
+
+    for (const checkout of checkouts) {
+      if (checkout.status === "paid_out") {
+        continue;
+      }
+
+      const store = await ctx.db.get(checkout.storeId as never);
+      if (!store) {
+        continue;
+      }
+
+      const existingPayout = await ctx.db
+        .query("payouts")
+        .withIndex("by_checkout", (q) => q.eq("checkoutId", checkout._id))
+        .first();
+
+      candidates.push({
+        checkout: { id: checkout._id, ...checkout },
+        existingPayout: existingPayout
+          ? { id: existingPayout._id, ...existingPayout }
+          : null,
+        store: { id: store._id, ...store },
+      });
+    }
+
+    return candidates;
   },
 });
 

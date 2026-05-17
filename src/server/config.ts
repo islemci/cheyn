@@ -24,6 +24,9 @@ const EnvSchema = z.object({
   ADMIN_API_KEY: z.string().optional(),
   API_BASE_URL: z.string().url().default("http://localhost:3000"),
   CHECKOUT_EXPIRY_MINUTES: optionalNumber(60),
+  CMC_API_KEY: z.string().optional(),
+  CMC_PRICE_CACHE_MAX_AGE_MS: optionalNumber(15 * 60 * 1000),
+  CMC_PRICE_REFRESH_INTERVAL_MS: optionalNumber(10 * 60 * 1000),
   CONFIRMATION_TIERS: z.string().optional(),
   CONVEX_ADMIN_KEY: z.string().optional(),
   CONVEX_DEPLOY_KEY: z.string().optional(),
@@ -36,18 +39,20 @@ const EnvSchema = z.object({
   MAX_TOTAL_FEE_BPS: optionalNumber(500),
   MAX_PAYOUT_ATOMIC: z.string().optional(),
   MIN_CHECKOUT_AMOUNT_ATOMIC: z.string().default("0"),
+  PAYMENT_UNDERPAY_TOLERANCE_ATOMIC: z.string().default("1000000"),
   PLATFORM_FEE_BPS: optionalNumber(0),
   PAYOUTS_ENABLED: z
     .string()
     .optional()
     .transform((value) => value !== "false"),
   PAYOUT_NETWORK_FEE_RESERVE_ATOMIC: z.string().default("20000000"),
+  PAYOUT_REQUIRED_CONFIRMATIONS: optionalNumber(10),
   PAYOUT_RETRY_DELAY_MS: optionalNumber(5 * 60 * 1000),
   PAYOUT_MAX_FAILURES: optionalNumber(3),
   WEBHOOK_RETRY_DELAY_MS: optionalNumber(60 * 1000),
   WEBHOOK_MAX_FAILURES: optionalNumber(5),
   REQUIRED_CONFIRMATIONS: optionalNumber(10),
-  WORKER_POLL_INTERVAL_MS: optionalNumber(15_000),
+  WORKER_POLL_INTERVAL_MS: optionalNumber(30_000),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

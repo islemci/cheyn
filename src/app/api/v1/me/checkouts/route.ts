@@ -1,4 +1,4 @@
-import { requireDeveloper } from "@/server/api-auth";
+import { fetchAuthMutation } from "@/lib/auth-server";
 import { getFreshXmrUsdPrice } from "@/server/coinmarketcap";
 import { getConfig } from "@/server/config";
 import { getRequiredConfirmationsForAmount } from "@/server/confirmations";
@@ -16,9 +16,16 @@ import { createWalletClient } from "@/server/wallet-rpc";
 
 export const dynamic = "force-dynamic";
 
+type CurrentDeveloper = {
+  id: string;
+};
+
 export async function POST(request: Request) {
   try {
-    const developer = await requireDeveloper(request);
+    const developer = (await fetchAuthMutation(
+      convex.refs.getOrClaimDeveloperForCurrentUser,
+      {},
+    )) as CurrentDeveloper;
     rateLimit(`checkout:${developer.id}`, 60, 60_000);
 
     const input = await parseJson(request, CreateCheckoutSchema);
@@ -40,55 +47,6 @@ export async function POST(request: Request) {
       throw new ApiError(400, "Checkout amount is below the minimum amount");
     }
 
-    const requestFingerprint = createRequestFingerprint({
-      amountAtomic,
-      amountUsdCents,
-      cancelUrl: input.cancelUrl,
-      metadata: input.metadata ?? {},
-      pricingCurrency: amountUsdCents ? "USD" : "XMR",
-      storeId: input.storeId,
-      successUrl: input.successUrl,
-    });
-
-    if (input.idempotencyKey) {
-      const existing = await convex.query<{
-        id: string;
-        amountAtomic: string;
-        requestFingerprint?: string;
-        requiredConfirmations?: number;
-        status: string;
-        subaddress: string;
-      } | null>(convex.refs.getCheckoutByIdempotency, {
-        developerId: developer.id,
-        idempotencyKey: input.idempotencyKey,
-      });
-
-      if (existing) {
-        if (existing.requestFingerprint !== requestFingerprint) {
-          throw new ApiError(
-            409,
-            "Idempotency key was already used with different checkout parameters",
-          );
-        }
-        return json({
-          address: existing.subaddress,
-          amountAtomic: existing.amountAtomic,
-          amountUsdCents:
-            "amountUsdCents" in existing ? existing.amountUsdCents : undefined,
-          checkoutId: existing.id,
-          checkoutUrl: `${config.API_BASE_URL}/c/${existing.id}`,
-          currency: "XMR",
-          pricingCurrency:
-            "pricingCurrency" in existing ? existing.pricingCurrency : "XMR",
-          requiredConfirmations:
-            "requiredConfirmations" in existing
-              ? existing.requiredConfirmations
-              : config.REQUIRED_CONFIRMATIONS,
-          status: existing.status,
-        });
-      }
-    }
-
     const store = await convex.query<{ id: string; status: string } | null>(
       convex.refs.getStoreForDeveloper,
       {
@@ -100,6 +58,15 @@ export async function POST(request: Request) {
       throw new ApiError(404, "Store not found");
     }
 
+    const requestFingerprint = createRequestFingerprint({
+      amountAtomic,
+      amountUsdCents,
+      cancelUrl: input.cancelUrl,
+      metadata: input.metadata ?? {},
+      pricingCurrency: amountUsdCents ? "USD" : "XMR",
+      storeId: input.storeId,
+      successUrl: input.successUrl,
+    });
     const wallet = createWalletClient();
     const subaddress = await wallet.createSubaddress();
     const now = Date.now();
@@ -148,6 +115,10 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Unauthorized";
+    if (message.includes("Unauthorized")) {
+      return json({ error: "Unauthorized" }, { status: 401 });
+    }
     return handleApiError(error);
   }
 }
