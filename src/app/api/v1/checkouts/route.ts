@@ -1,5 +1,6 @@
 import { requireDeveloper } from "@/server/api-auth";
 import { getConfig } from "@/server/config";
+import { getRequiredConfirmationsForAmount } from "@/server/confirmations";
 import { convex } from "@/server/convex-client";
 import { ApiError, handleApiError, json, parseJson } from "@/server/http";
 import { createRequestFingerprint } from "@/server/idempotency";
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
         id: string;
         amountAtomic: string;
         requestFingerprint?: string;
+        requiredConfirmations?: number;
         status: string;
         subaddress: string;
       } | null>(convex.refs.getCheckoutByIdempotency, {
@@ -57,6 +59,10 @@ export async function POST(request: Request) {
           checkoutId: existing.id,
           checkoutUrl: `${config.API_BASE_URL}/c/${existing.id}`,
           currency: "XMR",
+          requiredConfirmations:
+            "requiredConfirmations" in existing
+              ? existing.requiredConfirmations
+              : config.REQUIRED_CONFIRMATIONS,
           status: existing.status,
         });
       }
@@ -76,6 +82,10 @@ export async function POST(request: Request) {
     const wallet = createWalletClient();
     const subaddress = await wallet.createSubaddress();
     const now = Date.now();
+    const requiredConfirmations = getRequiredConfirmationsForAmount(
+      input.amountAtomic,
+      config,
+    );
     const result = await convex.mutation<{ checkoutId: string }>(
       convex.refs.createCheckout,
       {
@@ -86,6 +96,7 @@ export async function POST(request: Request) {
         idempotencyKey: input.idempotencyKey,
         metadata: input.metadata,
         now,
+        requiredConfirmations,
         requestFingerprint,
         storeId: input.storeId,
         subaddress: subaddress.address,
@@ -102,6 +113,7 @@ export async function POST(request: Request) {
         checkoutId: result.checkoutId,
         checkoutUrl: `${config.API_BASE_URL}/c/${result.checkoutId}`,
         currency: "XMR",
+        requiredConfirmations,
         status: "waiting_for_payment",
       },
       { status: 201 },

@@ -24,6 +24,7 @@ const EnvSchema = z.object({
   ADMIN_API_KEY: z.string().optional(),
   API_BASE_URL: z.string().url().default("http://localhost:3000"),
   CHECKOUT_EXPIRY_MINUTES: optionalNumber(60),
+  CONFIRMATION_TIERS: z.string().optional(),
   CONVEX_ADMIN_KEY: z.string().optional(),
   CONVEX_DEPLOY_KEY: z.string().optional(),
   CONVEX_URL: z.string().url().optional(),

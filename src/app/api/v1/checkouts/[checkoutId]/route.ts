@@ -20,6 +20,7 @@ export async function GET(
       amountAtomic: string;
       receivedAtomic: string;
       confirmations: number;
+      requiredConfirmations?: number;
       status: string;
       txHash?: string;
       subaddress: string;
@@ -39,7 +40,8 @@ export async function GET(
       confirmations: checkout.confirmations,
       currency: "XMR",
       receivedAtomic: checkout.receivedAtomic,
-      requiredConfirmations: getConfig().REQUIRED_CONFIRMATIONS,
+      requiredConfirmations:
+        checkout.requiredConfirmations ?? getConfig().REQUIRED_CONFIRMATIONS,
       status: checkout.status,
       txHash: checkout.txHash,
     });

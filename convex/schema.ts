@@ -41,6 +41,7 @@ export default defineSchema({
     subaddressIndexMinor: v.number(),
     status: v.string(),
     confirmations: v.number(),
+    requiredConfirmations: v.optional(v.number()),
     txHash: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
     requestFingerprint: v.optional(v.string()),

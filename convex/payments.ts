@@ -260,6 +260,7 @@ export const createCheckout = mutation({
     subaddress: v.string(),
     subaddressIndexMajor: v.number(),
     subaddressIndexMinor: v.number(),
+    requiredConfirmations: v.number(),
     idempotencyKey: v.optional(v.string()),
     requestFingerprint: v.optional(v.string()),
     expiresAt: v.number(),
@@ -311,6 +312,7 @@ export const createCheckout = mutation({
       requestFingerprint: args.requestFingerprint,
       status: "waiting_for_payment",
       confirmations: 0,
+      requiredConfirmations: args.requiredConfirmations,
       expiresAt: args.expiresAt,
       createdAt: args.now,
       updatedAt: args.now,
@@ -374,6 +376,7 @@ export const recordPaymentObservation = mutation({
     txHash: v.string(),
     amountAtomic: v.string(),
     confirmations: v.number(),
+    requiredConfirmations: v.number(),
     height: v.optional(v.number()),
     now: v.number(),
   },
@@ -392,7 +395,7 @@ export const recordPaymentObservation = mutation({
         confirmations: args.confirmations,
         height: args.height,
         confirmedAt:
-          args.confirmations >= 10
+          args.confirmations >= args.requiredConfirmations
             ? (existing.confirmedAt ?? args.now)
             : undefined,
       });
@@ -406,7 +409,8 @@ export const recordPaymentObservation = mutation({
       confirmations: args.confirmations,
       height: args.height,
       seenAt: args.now,
-      confirmedAt: args.confirmations >= 10 ? args.now : undefined,
+      confirmedAt:
+        args.confirmations >= args.requiredConfirmations ? args.now : undefined,
     });
 
     return { created: true };

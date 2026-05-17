@@ -17,6 +17,7 @@ type Checkout = {
   subaddressIndexMajor: number;
   subaddressIndexMinor: number;
   expiresAt: number;
+  requiredConfirmations?: number;
   status: string;
 };
 
@@ -91,6 +92,8 @@ async function scanPayments() {
       confirmations: transfer.confirmations,
       height: transfer.height,
       now,
+      requiredConfirmations:
+        checkout.requiredConfirmations ?? config.REQUIRED_CONFIRMATIONS,
       txHash: transfer.txHash,
     });
   }
@@ -124,9 +127,11 @@ async function scanPayments() {
       receivedAtomic,
       checkout.amountAtomic,
     );
+    const requiredConfirmations =
+      checkout.requiredConfirmations ?? config.REQUIRED_CONFIRMATIONS;
     const status = !hasEnoughMoney
       ? "seen"
-      : confirmations >= config.REQUIRED_CONFIRMATIONS
+      : confirmations >= requiredConfirmations
         ? "confirmed"
         : confirmations > 0
           ? "confirming"
