@@ -57,6 +57,18 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         return;
       }
 
+      if (isSignUp) {
+        const signInResponse = (await authClient.signIn.email({
+          email,
+          password,
+        })) as AuthResponse;
+
+        if (signInResponse.error) {
+          setError(signInResponse.error.message ?? "Sign in failed");
+          return;
+        }
+      }
+
       router.push("/dashboard/overview");
       router.refresh();
     } catch (caught) {

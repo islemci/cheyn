@@ -17,6 +17,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "cheyn",
   description: "Monero checkout, confirmation, payout, and webhook API.",
+  icons: {
+    icon: "/c.svg",
+    shortcut: "/c.svg",
+    apple: "/c.svg",
+  },
 };
 
 export const viewport: Viewport = {
