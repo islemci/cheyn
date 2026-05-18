@@ -413,6 +413,7 @@ export const createCheckout = mutation({
     subaddressIndexMinor: v.number(),
     requiredConfirmations: v.number(),
     xmrUsdPriceFetchedAt: v.optional(v.number()),
+    xmrUsdPriceDecimal: v.optional(v.string()),
     xmrUsdPriceMicro: v.optional(v.string()),
     xmrUsdPriceSource: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
@@ -457,6 +458,7 @@ export const createCheckout = mutation({
       amountUsdCents: args.amountUsdCents,
       pricingCurrency: args.pricingCurrency,
       xmrUsdPriceFetchedAt: args.xmrUsdPriceFetchedAt,
+      xmrUsdPriceDecimal: args.xmrUsdPriceDecimal,
       xmrUsdPriceMicro: args.xmrUsdPriceMicro,
       xmrUsdPriceSource: args.xmrUsdPriceSource,
       receivedAtomic: "0",
@@ -503,6 +505,7 @@ export const upsertPriceQuote = mutation({
   args: {
     fetchedAt: v.number(),
     lastUpdatedAt: v.optional(v.number()),
+    priceUsdDecimal: v.optional(v.string()),
     priceUsdMicro: v.string(),
     source: v.string(),
     symbol: v.string(),
@@ -518,6 +521,7 @@ export const upsertPriceQuote = mutation({
       await ctx.db.patch(existing._id, {
         fetchedAt: args.fetchedAt,
         lastUpdatedAt: args.lastUpdatedAt,
+        priceUsdDecimal: args.priceUsdDecimal,
         priceUsdMicro: args.priceUsdMicro,
         source: args.source,
       });
@@ -527,6 +531,7 @@ export const upsertPriceQuote = mutation({
     const quoteId = await ctx.db.insert("priceQuotes", {
       fetchedAt: args.fetchedAt,
       lastUpdatedAt: args.lastUpdatedAt,
+      priceUsdDecimal: args.priceUsdDecimal,
       priceUsdMicro: args.priceUsdMicro,
       quoteCurrency: "USD",
       source: args.source,
@@ -545,6 +550,40 @@ export const getCheckoutForDeveloper = query({
       return null;
     }
     return { id: checkout._id, ...checkout };
+  },
+});
+
+export const getHostedCheckout = query({
+  args: { checkoutId: v.string() },
+  returns: v.union(v.null(), v.any()),
+  handler: async (ctx, args) => {
+    const checkout = await ctx.db.get(args.checkoutId as never);
+    if (!checkout) {
+      return null;
+    }
+
+    const store = await ctx.db.get(checkout.storeId as never);
+    return {
+      id: checkout._id,
+      address: checkout.subaddress,
+      amountAtomic: checkout.amountAtomic,
+      amountUsdCents: checkout.amountUsdCents,
+      cancelUrl: checkout.cancelUrl,
+      confirmations: checkout.confirmations,
+      createdAt: checkout.createdAt,
+      currency: checkout.currency,
+      expiresAt: checkout.expiresAt,
+      metadata: checkout.metadata,
+      pricingCurrency: checkout.pricingCurrency,
+      receivedAtomic: checkout.receivedAtomic,
+      requiredConfirmations: checkout.requiredConfirmations,
+      status: checkout.status,
+      storeName: store?.name,
+      successUrl: checkout.successUrl,
+      txHash: checkout.txHash,
+      xmrUsdPriceDecimal: checkout.xmrUsdPriceDecimal,
+      xmrUsdPriceMicro: checkout.xmrUsdPriceMicro,
+    };
   },
 });
 

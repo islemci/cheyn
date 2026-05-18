@@ -38,6 +38,9 @@ const refs = {
   getCheckoutForDeveloper: makeFunctionReference<"query">(
     "payments.js:getCheckoutForDeveloper",
   ),
+  getHostedCheckout: makeFunctionReference<"query">(
+    "payments.js:getHostedCheckout",
+  ),
   getCheckoutByIdempotency: makeFunctionReference<"query">(
     "payments.js:getCheckoutByIdempotency",
   ),

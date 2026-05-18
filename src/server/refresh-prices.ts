@@ -7,6 +7,7 @@ async function main() {
     lastUpdatedAt: quote.lastUpdatedAt
       ? new Date(quote.lastUpdatedAt).toISOString()
       : undefined,
+    priceUsdDecimal: quote.priceUsdDecimal,
     priceUsdMicro: quote.priceUsdMicro,
     source: quote.source,
     symbol: quote.symbol,

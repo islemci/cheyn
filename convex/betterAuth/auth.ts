@@ -18,7 +18,7 @@ export const authComponent = createClient<DataModel, typeof schema>(
 
 export const createAuthOptions = (ctx: GenericCtx<DataModel>) =>
   ({
-    appName: "MoneroBar Payments",
+    appName: "cheyn",
     baseURL: process.env.SITE_URL,
     database: authComponent.adapter(ctx),
     emailAndPassword: {

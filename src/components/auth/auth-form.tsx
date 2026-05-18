@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, Loader2 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
@@ -56,7 +57,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/dashboard/overview");
       router.refresh();
     } catch (caught) {
       setError(
@@ -72,10 +73,14 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       <Card className="w-full max-w-md">
         <CardHeader>
           <Link href="/" className="mb-5 flex items-center gap-2 font-semibold">
-            <span className="flex size-8 items-center justify-center rounded-md bg-foreground text-background">
-              X
-            </span>
-            MoneroBar Pay
+            <Image
+              src="/c.svg"
+              alt=""
+              width={27}
+              height={32}
+              className="theme-logo h-8 w-auto"
+            />
+            cheyn
           </Link>
           <CardTitle className="text-2xl">
             {isSignUp ? "Create developer account" : "Sign in"}

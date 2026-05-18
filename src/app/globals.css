@@ -47,3 +47,13 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
+
+.theme-logo {
+  filter: invert(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme-logo {
+    filter: none;
+  }
+}

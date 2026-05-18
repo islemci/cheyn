@@ -127,6 +127,7 @@ async function refreshPriceIfDue() {
     const quote = await refreshXmrUsdPrice();
     logWorker("refreshed XMR/USD price", {
       fetchedAt: quote.fetchedAt,
+      priceUsdDecimal: quote.priceUsdDecimal,
       priceUsdMicro: quote.priceUsdMicro,
       source: quote.source,
     });

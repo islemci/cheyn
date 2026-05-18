@@ -21,16 +21,32 @@ type CoinMarketCapQuoteResponse = {
 export type XmrUsdQuote = {
   fetchedAt: number;
   lastUpdatedAt?: number;
+  priceUsdDecimal: string;
   priceUsdMicro: string;
   source: "coinmarketcap";
   symbol: "XMR";
 };
 
-function priceToMicro(price: number) {
-  if (!Number.isFinite(price) || price <= 0) {
+function priceDecimalToMicro(price: string) {
+  if (!/^[1-9]\d*(\.\d+)?$/.test(price)) {
     throw new Error("CoinMarketCap returned an invalid XMR/USD price");
   }
-  return Math.round(price * 1_000_000).toString();
+
+  const [whole, fraction = ""] = price.split(".");
+  const microFraction = fraction.padEnd(7, "0");
+  const firstSix = microFraction.slice(0, 6);
+  const seventh = Number(microFraction[6] ?? "0");
+  const base = BigInt(whole) * BigInt(1_000_000) + BigInt(firstSix);
+
+  return (base + (seventh >= 5 ? BigInt(1) : BigInt(0))).toString();
+}
+
+function extractUsdPriceDecimal(rawBody: string) {
+  const match = rawBody.match(/"price"\s*:\s*([0-9]+(?:\.[0-9]+)?)/);
+  if (!match?.[1]) {
+    throw new Error("CoinMarketCap response did not include XMR/USD price");
+  }
+  return match[1];
 }
 
 export async function fetchXmrUsdFromCoinMarketCap(): Promise<XmrUsdQuote> {
@@ -51,7 +67,8 @@ export async function fetchXmrUsdFromCoinMarketCap(): Promise<XmrUsdQuote> {
       accept: "application/json",
     },
   });
-  const body = (await response.json()) as CoinMarketCapQuoteResponse;
+  const rawBody = await response.text();
+  const body = JSON.parse(rawBody) as CoinMarketCapQuoteResponse;
 
   if (!response.ok || body.status?.error_code) {
     throw new Error(
@@ -64,13 +81,15 @@ export async function fetchXmrUsdFromCoinMarketCap(): Promise<XmrUsdQuote> {
   if (!usd?.price) {
     throw new Error("CoinMarketCap response did not include XMR/USD price");
   }
+  const priceUsdDecimal = extractUsdPriceDecimal(rawBody);
 
   return {
     fetchedAt: Date.now(),
     lastUpdatedAt: usd.last_updated
       ? new Date(usd.last_updated).getTime()
       : undefined,
-    priceUsdMicro: priceToMicro(usd.price),
+    priceUsdDecimal,
+    priceUsdMicro: priceDecimalToMicro(priceUsdDecimal),
     source: "coinmarketcap",
     symbol: "XMR",
   };

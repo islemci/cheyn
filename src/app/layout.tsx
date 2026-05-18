@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MoneroBar Pay",
+  title: "cheyn",
   description: "Monero checkout, confirmation, payout, and webhook API.",
 };
 

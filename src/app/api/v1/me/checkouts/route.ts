@@ -7,7 +7,7 @@ import { ApiError, handleApiError, json, parseJson } from "@/server/http";
 import { createRequestFingerprint } from "@/server/idempotency";
 import {
   assertAtomicAmount,
-  usdCentsToAtomic,
+  usdCentsToAtomicFromUsdPrice,
   usdDisplayToCents,
 } from "@/server/money";
 import { rateLimit } from "@/server/rate-limit";
@@ -38,9 +38,9 @@ export async function POST(request: Request) {
     const pricing = amountUsdCents ? await getFreshXmrUsdPrice() : undefined;
     const amountAtomic = input.amountAtomic
       ? assertAtomicAmount(input.amountAtomic)
-      : usdCentsToAtomic({
+      : usdCentsToAtomicFromUsdPrice({
           amountUsdCents: amountUsdCents as string,
-          xmrUsdPriceMicro: pricing?.priceUsdMicro as string,
+          xmrUsdPriceDecimal: pricing?.priceUsdDecimal as string,
         });
 
     if (BigInt(amountAtomic) < BigInt(config.MIN_CHECKOUT_AMOUNT_ATOMIC)) {
@@ -94,6 +94,7 @@ export async function POST(request: Request) {
         subaddressIndexMinor: subaddress.minorIndex,
         successUrl: input.successUrl,
         xmrUsdPriceFetchedAt: pricing?.fetchedAt,
+        xmrUsdPriceDecimal: pricing?.priceUsdDecimal,
         xmrUsdPriceMicro: pricing?.priceUsdMicro,
         xmrUsdPriceSource: pricing?.source,
       },
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
         pricingCurrency: amountUsdCents ? "USD" : "XMR",
         requiredConfirmations,
         status: "waiting_for_payment",
+        xmrUsdPriceDecimal: pricing?.priceUsdDecimal,
         xmrUsdPriceMicro: pricing?.priceUsdMicro,
       },
       { status: 201 },

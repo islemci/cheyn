@@ -33,6 +33,7 @@ export default defineSchema({
     amountAtomic: v.string(),
     amountUsdCents: v.optional(v.string()),
     pricingCurrency: v.optional(v.string()),
+    xmrUsdPriceDecimal: v.optional(v.string()),
     xmrUsdPriceMicro: v.optional(v.string()),
     xmrUsdPriceFetchedAt: v.optional(v.number()),
     xmrUsdPriceSource: v.optional(v.string()),
@@ -121,6 +122,7 @@ export default defineSchema({
   priceQuotes: defineTable({
     fetchedAt: v.number(),
     lastUpdatedAt: v.optional(v.number()),
+    priceUsdDecimal: v.optional(v.string()),
     priceUsdMicro: v.string(),
     quoteCurrency: v.string(),
     source: v.string(),

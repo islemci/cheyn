@@ -10,6 +10,7 @@ import {
   WalletCards,
   Webhook,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -80,17 +81,21 @@ export function LandingPage() {
     <main className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 border-border border-b bg-background/95 backdrop-blur">
         <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="flex size-8 items-center justify-center rounded-md bg-foreground text-background">
-              X
-            </span>
-            MoneroBar Pay
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/cheyn.svg"
+              alt="cheyn"
+              width={104}
+              height={40}
+              className="theme-logo h-10 w-auto"
+              priority
+            />
           </Link>
           <div className="hidden items-center gap-6 text-muted-foreground text-sm md:flex">
             <Link href="#product">Product</Link>
             <Link href="#workflow">Workflow</Link>
             <Link href="#pricing">Pricing</Link>
-            <Link href="/dashboard">Dashboard</Link>
+            <Link href="/dashboard/overview">Dashboard</Link>
           </div>
           <div className="flex items-center gap-2">
             <Button asChild size="sm" variant="ghost">
@@ -126,7 +131,7 @@ export function LandingPage() {
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/dashboard">View dashboard</Link>
+              <Link href="/dashboard/overview">View dashboard</Link>
             </Button>
           </div>
           <div className="mt-8 grid max-w-xl gap-3 text-sm sm:grid-cols-3">

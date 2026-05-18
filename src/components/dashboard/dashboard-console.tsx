@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "convex/react";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -18,8 +19,8 @@ import {
   Wallet,
   Webhook,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
 
@@ -33,6 +34,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { api } from "../../../convex/_generated/api";
 
 type DashboardStore = {
   id: string;
@@ -46,15 +48,18 @@ type DashboardStore = {
 type DashboardCheckout = {
   id: string;
   amountAtomic: string;
+  amountUsdCents?: string;
   confirmations: number;
   createdAt: number;
   expiresAt: number;
+  pricingCurrency?: string;
   receivedAtomic: string;
   requiredConfirmations?: number;
   status: string;
   storeId: string;
   subaddress: string;
   txHash?: string;
+  xmrUsdPriceDecimal?: string;
 };
 
 type DashboardPayout = {
@@ -123,16 +128,41 @@ type DashboardConfig = {
 };
 
 const tabs = [
-  { icon: Store, id: "overview", label: "Overview" },
-  { icon: Store, id: "stores", label: "Stores" },
-  { icon: Wallet, id: "checkouts", label: "Checkouts" },
-  { icon: Landmark, id: "payouts", label: "Payouts" },
-  { icon: Webhook, id: "webhooks", label: "Webhooks" },
-  { icon: KeyRound, id: "api-key", label: "API key" },
-  { icon: ShieldCheck, id: "risk", label: "Risk" },
+  {
+    href: "/dashboard/overview",
+    icon: Store,
+    id: "overview",
+    label: "Overview",
+  },
+  { href: "/dashboard/stores", icon: Store, id: "stores", label: "Stores" },
+  {
+    href: "/dashboard/checkout",
+    icon: Wallet,
+    id: "checkout",
+    label: "Checkouts",
+  },
+  {
+    href: "/dashboard/payouts",
+    icon: Landmark,
+    id: "payouts",
+    label: "Payouts",
+  },
+  {
+    href: "/dashboard/webhooks",
+    icon: Webhook,
+    id: "webhooks",
+    label: "Webhooks",
+  },
+  {
+    href: "/dashboard/api-key",
+    icon: KeyRound,
+    id: "api-key",
+    label: "API key",
+  },
+  { href: "/dashboard/risk", icon: ShieldCheck, id: "risk", label: "Risk" },
 ] as const;
 
-type TabId = (typeof tabs)[number]["id"];
+export type DashboardTabId = (typeof tabs)[number]["id"];
 
 function StatusBadge({ status }: { status: string }) {
   if (["active", "confirmed", "paid_out", "sent", "success"].includes(status)) {
@@ -145,13 +175,16 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function DashboardConsole({
+  activeTab,
   config,
-  data,
+  data: initialData,
 }: {
+  activeTab: DashboardTabId;
   config: DashboardConfig;
   data: DashboardData;
 }) {
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const liveData = useQuery(api.payments.getDashboardForCurrentUser);
+  const data = (liveData ?? initialData) as DashboardData;
   const primaryStore = data.stores[0];
   const stats = useMemo(
     () => [
@@ -186,11 +219,15 @@ export function DashboardConsole({
     <main className="min-h-screen bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-border border-r bg-card lg:block">
         <div className="flex h-16 items-center gap-2 border-border border-b px-5">
-          <span className="flex size-8 items-center justify-center rounded-md bg-foreground text-background">
-            X
-          </span>
+          <Image
+            src="/c.svg"
+            alt=""
+            width={27}
+            height={32}
+            className="theme-logo h-8 w-auto"
+          />
           <div>
-            <p className="font-semibold">MoneroBar Pay</p>
+            <p className="font-semibold">cheyn</p>
             <p className="text-muted-foreground text-xs">
               {data.developer.email}
             </p>
@@ -198,10 +235,9 @@ export function DashboardConsole({
         </div>
         <nav className="grid gap-1 p-3 text-sm">
           {tabs.map((tab) => (
-            <button
+            <Link
               key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
+              href={tab.href}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-left text-muted-foreground hover:bg-muted hover:text-foreground",
                 activeTab === tab.id && "bg-muted text-foreground",
@@ -209,7 +245,7 @@ export function DashboardConsole({
             >
               <tab.icon className="size-4" />
               {tab.label}
-            </button>
+            </Link>
           ))}
         </nav>
       </aside>
@@ -226,10 +262,9 @@ export function DashboardConsole({
             <div className="flex items-center gap-2 overflow-x-auto">
               <div className="flex rounded-md border border-border p-1 lg:hidden">
                 {tabs.map((tab) => (
-                  <button
+                  <Link
                     key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
+                    href={tab.href}
                     className={cn(
                       "flex h-8 items-center gap-2 rounded px-2 text-muted-foreground text-sm",
                       activeTab === tab.id && "bg-muted text-foreground",
@@ -237,7 +272,7 @@ export function DashboardConsole({
                   >
                     <tab.icon className="size-4" />
                     <span className="hidden sm:inline">{tab.label}</span>
-                  </button>
+                  </Link>
                 ))}
               </div>
               <Button size="icon" variant="outline" aria-label="Notifications">
@@ -259,7 +294,7 @@ export function DashboardConsole({
             />
           )}
           {activeTab === "stores" && <StoresTab stores={data.stores} />}
-          {activeTab === "checkouts" && (
+          {activeTab === "checkout" && (
             <CheckoutsTab checkouts={data.checkouts} stores={data.stores} />
           )}
           {activeTab === "payouts" && <PayoutsTab payouts={data.payouts} />}
@@ -369,7 +404,6 @@ function CheckoutsTab({
   checkouts: DashboardCheckout[];
   stores: DashboardStore[];
 }) {
-  const router = useRouter();
   const [storeId, setStoreId] = useState(stores[0]?.id ?? "");
   const [currency, setCurrency] = useState<"USD" | "XMR">("USD");
   const [amount, setAmount] = useState("");
@@ -425,7 +459,6 @@ function CheckoutsTab({
         checkoutUrl: body.checkoutUrl,
       });
       setStatus("Checkout link created.");
-      router.refresh();
     } catch (error) {
       setStatus(
         error instanceof SyntaxError
@@ -582,7 +615,7 @@ function CheckoutsTab({
                     <tr key={checkout.id} className="border-border border-t">
                       <td className="p-3 font-mono">{checkout.id}</td>
                       <td className="p-3">
-                        {formatAtomic(checkout.amountAtomic)}
+                        {formatCheckoutExpected(checkout)}
                       </td>
                       <td className="p-3">
                         {formatAtomic(checkout.receivedAtomic)}
@@ -610,7 +643,6 @@ function CheckoutsTab({
 }
 
 function StoresTab({ stores }: { stores: DashboardStore[] }) {
-  const router = useRouter();
   const [name, setName] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -649,7 +681,6 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
       setWebhookUrl("");
       setWebhookSecret(body.webhookSecret ?? null);
       setStatus(`Store created: ${body.storeId}`);
-      router.refresh();
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Store creation failed",
@@ -767,7 +798,6 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
 }
 
 function PayoutsTab({ payouts }: { payouts: DashboardPayout[] }) {
-  const router = useRouter();
   const [status, setStatus] = useState<string | null>(null);
   const [isCollecting, setIsCollecting] = useState(false);
 
@@ -799,7 +829,6 @@ function PayoutsTab({ payouts }: { payouts: DashboardPayout[] }) {
           body.eligibleCount === 1 ? "" : "s"
         }. Existing payouts found: ${body.existingPayoutCount ?? 0}.`,
       );
-      router.refresh();
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Failed to collect payouts",
@@ -1128,6 +1157,23 @@ function formatAtomic(amountAtomic: string) {
     .padStart(12, "0")
     .replace(/0+$/, "");
   return `${whole.toString()}${fraction ? `.${fraction}` : ""} XMR`;
+}
+
+function formatCheckoutExpected(checkout: DashboardCheckout) {
+  if (checkout.pricingCurrency === "USD" && checkout.amountUsdCents) {
+    const rate = checkout.xmrUsdPriceDecimal
+      ? ` · $${checkout.xmrUsdPriceDecimal}/XMR`
+      : "";
+    return `${formatUsdCents(checkout.amountUsdCents)}${rate}`;
+  }
+  return formatAtomic(checkout.amountAtomic);
+}
+
+function formatUsdCents(amountUsdCents: string) {
+  const cents = BigInt(amountUsdCents);
+  const dollars = cents / BigInt(100);
+  const remainder = (cents % BigInt(100)).toString().padStart(2, "0");
+  return `$${dollars.toString()}.${remainder}`;
 }
 
 function truncateMiddle(value: string) {

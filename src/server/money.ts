@@ -108,6 +108,21 @@ export function usdCentsToAtomic(args: {
   return ((numerator + priceMicro - BigInt(1)) / priceMicro).toString();
 }
 
+export function usdCentsToAtomicFromUsdPrice(args: {
+  amountUsdCents: string;
+  xmrUsdPriceDecimal: string;
+}) {
+  if (!/^[1-9]\d*$/.test(args.amountUsdCents)) {
+    throw new Error("amountUsdCents must be a positive integer string");
+  }
+
+  const price = parseDecimal(args.xmrUsdPriceDecimal);
+  const numerator = BigInt(args.amountUsdCents) * price.scale;
+  const denominator = BigInt(100) * price.value;
+
+  return ceilDiv(numerator * ATOMIC_UNITS_PER_XMR, denominator).toString();
+}
+
 export function usdDisplayToCents(amount: string) {
   if (!/^[1-9]\d*(\.\d{1,2})?$/.test(amount)) {
     throw new Error(
@@ -120,4 +135,20 @@ export function usdDisplayToCents(amount: string) {
     BigInt(dollars) * BigInt(100) +
     BigInt(cents.padEnd(2, "0"))
   ).toString();
+}
+
+function ceilDiv(numerator: bigint, denominator: bigint) {
+  return (numerator + denominator - BigInt(1)) / denominator;
+}
+
+function parseDecimal(value: string) {
+  if (!/^[1-9]\d*(\.\d+)?$/.test(value)) {
+    throw new Error("USD price must be a positive decimal string");
+  }
+
+  const [whole, fraction = ""] = value.split(".");
+  return {
+    scale: BigInt(10) ** BigInt(fraction.length),
+    value: BigInt(`${whole}${fraction}`),
+  };
 }
