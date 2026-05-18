@@ -32,6 +32,8 @@ const EnvSchema = z.object({
   CONVEX_DEPLOY_KEY: z.string().optional(),
   CONVEX_URL: z.string().url().optional(),
   MONERO_RPC_PASS: z.string().optional(),
+  MONERO_RPC_RETRIES: optionalNumber(2),
+  MONERO_RPC_TIMEOUT_MS: optionalNumber(30_000),
   MONERO_RPC_URL: z.string().url().optional(),
   MONERO_RPC_USER: z.string().optional(),
   MONERO_WALLET_MODE: z.enum(["real", "mock"]).default("mock"),

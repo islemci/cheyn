@@ -15,8 +15,10 @@ export async function POST(request: Request) {
     const result = await fetchAuthMutation(
       convex.refs.createStoreForCurrentUser,
       {
+        cancelCallbackUrl: input.cancelCallbackUrl,
         name: input.name,
         now: Date.now(),
+        successCallbackUrl: input.successCallbackUrl,
         webhookSecret,
         webhookUrl: input.webhookUrl,
         withdrawAddress: input.withdrawAddress,

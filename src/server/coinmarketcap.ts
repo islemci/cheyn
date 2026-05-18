@@ -21,7 +21,7 @@ type CoinMarketCapQuoteResponse = {
 export type XmrUsdQuote = {
   fetchedAt: number;
   lastUpdatedAt?: number;
-  priceUsdDecimal: string;
+  priceUsdDecimal?: string;
   priceUsdMicro: string;
   source: "coinmarketcap";
   symbol: "XMR";
@@ -109,7 +109,10 @@ export async function getFreshXmrUsdPrice() {
   );
   const now = Date.now();
 
-  if (cached && now - cached.fetchedAt <= config.CMC_PRICE_CACHE_MAX_AGE_MS) {
+  if (
+    cached?.priceUsdDecimal &&
+    now - cached.fetchedAt <= config.CMC_PRICE_CACHE_MAX_AGE_MS
+  ) {
     return cached;
   }
 

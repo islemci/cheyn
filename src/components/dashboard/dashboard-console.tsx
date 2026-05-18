@@ -38,9 +38,11 @@ import { api } from "../../../convex/_generated/api";
 
 type DashboardStore = {
   id: string;
+  cancelCallbackUrl?: string;
   createdAt: number;
   name: string;
   status: string;
+  successCallbackUrl?: string;
   webhookUrl?: string;
   withdrawAddress: string;
 };
@@ -386,6 +388,10 @@ function OverviewTab({
                   label="Webhook"
                   value={primaryStore.webhookUrl ?? "Not configured"}
                 />
+                <InfoRow
+                  label="Success callback"
+                  value={primaryStore.successCallbackUrl ?? "Not configured"}
+                />
               </>
             ) : (
               <EmptyState text="No store has been created for this developer yet." />
@@ -644,6 +650,8 @@ function CheckoutsTab({
 
 function StoresTab({ stores }: { stores: DashboardStore[] }) {
   const [name, setName] = useState("");
+  const [successCallbackUrl, setSuccessCallbackUrl] = useState("");
+  const [cancelCallbackUrl, setCancelCallbackUrl] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
@@ -660,6 +668,8 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
       const response = await fetch("/api/v1/me/stores", {
         body: JSON.stringify({
           name,
+          cancelCallbackUrl: cancelCallbackUrl || undefined,
+          successCallbackUrl: successCallbackUrl || undefined,
           webhookUrl: webhookUrl || undefined,
           withdrawAddress,
         }),
@@ -677,6 +687,8 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
       }
 
       setName("");
+      setSuccessCallbackUrl("");
+      setCancelCallbackUrl("");
       setWithdrawAddress("");
       setWebhookUrl("");
       setWebhookSecret(body.webhookSecret ?? null);
@@ -731,6 +743,26 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
                 type="url"
               />
             </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Success callback URL</span>
+              <input
+                value={successCallbackUrl}
+                onChange={(event) => setSuccessCallbackUrl(event.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="https://example.com/payment/success"
+                type="url"
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Cancel callback URL</span>
+              <input
+                value={cancelCallbackUrl}
+                onChange={(event) => setCancelCallbackUrl(event.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="https://example.com/payment/cancel"
+                type="url"
+              />
+            </label>
             <Button disabled={isCreating} type="submit">
               <Plus />
               {isCreating ? "Creating..." : "Create store"}
@@ -766,34 +798,124 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
           {stores.length === 0 ? (
             <EmptyState text="No stores yet. Create one to start accepting checkouts." />
           ) : (
-            stores.map((store) => (
-              <div
-                key={store.id}
-                className="grid gap-3 rounded-md border border-border p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-medium">{store.name}</p>
-                    <p className="mt-1 font-mono text-muted-foreground text-xs">
-                      {store.id}
-                    </p>
-                  </div>
-                  <StatusBadge status={store.status} />
-                </div>
-                <InfoRow
-                  label="Withdraw"
-                  value={truncateMiddle(store.withdrawAddress)}
-                />
-                <InfoRow
-                  label="Webhook"
-                  value={store.webhookUrl ?? "Not configured"}
-                />
-              </div>
-            ))
+            stores.map((store) => <StoreEditor key={store.id} store={store} />)
           )}
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+function StoreEditor({ store }: { store: DashboardStore }) {
+  const [name, setName] = useState(store.name);
+  const [withdrawAddress, setWithdrawAddress] = useState(store.withdrawAddress);
+  const [webhookUrl, setWebhookUrl] = useState(store.webhookUrl ?? "");
+  const [successCallbackUrl, setSuccessCallbackUrl] = useState(
+    store.successCallbackUrl ?? "",
+  );
+  const [cancelCallbackUrl, setCancelCallbackUrl] = useState(
+    store.cancelCallbackUrl ?? "",
+  );
+  const [status, setStatus] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function updateStore(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+    setStatus(null);
+
+    try {
+      const response = await fetch(`/api/v1/me/stores/${store.id}`, {
+        body: JSON.stringify({
+          cancelCallbackUrl: cancelCallbackUrl || null,
+          name,
+          successCallbackUrl: successCallbackUrl || null,
+          webhookUrl: webhookUrl || null,
+          withdrawAddress,
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Failed to update store");
+      }
+      setStatus("Store updated.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Store update failed");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={updateStore}
+      className="grid gap-3 rounded-md border border-border p-4"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium">{store.name}</p>
+          <p className="mt-1 font-mono text-muted-foreground text-xs">
+            {store.id}
+          </p>
+        </div>
+        <StatusBadge status={store.status} />
+      </div>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Store name</span>
+        <input
+          required
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </label>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Withdrawal address</span>
+        <input
+          required
+          value={withdrawAddress}
+          onChange={(event) => setWithdrawAddress(event.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </label>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Webhook URL</span>
+        <input
+          value={webhookUrl}
+          onChange={(event) => setWebhookUrl(event.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          type="url"
+        />
+      </label>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Success callback URL</span>
+        <input
+          value={successCallbackUrl}
+          onChange={(event) => setSuccessCallbackUrl(event.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          type="url"
+        />
+      </label>
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">Cancel callback URL</span>
+        <input
+          value={cancelCallbackUrl}
+          onChange={(event) => setCancelCallbackUrl(event.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          type="url"
+        />
+      </label>
+      {status && (
+        <p className="rounded-md border border-border bg-muted p-3 text-muted-foreground text-sm">
+          {status}
+        </p>
+      )}
+      <Button disabled={isSaving} type="submit" variant="outline">
+        {isSaving ? "Saving..." : "Save changes"}
+      </Button>
+    </form>
   );
 }
 

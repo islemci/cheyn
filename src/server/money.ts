@@ -110,10 +110,20 @@ export function usdCentsToAtomic(args: {
 
 export function usdCentsToAtomicFromUsdPrice(args: {
   amountUsdCents: string;
-  xmrUsdPriceDecimal: string;
+  xmrUsdPriceDecimal?: string;
+  xmrUsdPriceMicro?: string;
 }) {
   if (!/^[1-9]\d*$/.test(args.amountUsdCents)) {
     throw new Error("amountUsdCents must be a positive integer string");
+  }
+  if (!args.xmrUsdPriceDecimal) {
+    if (!args.xmrUsdPriceMicro) {
+      throw new Error("USD price is required");
+    }
+    return usdCentsToAtomic({
+      amountUsdCents: args.amountUsdCents,
+      xmrUsdPriceMicro: args.xmrUsdPriceMicro,
+    });
   }
 
   const price = parseDecimal(args.xmrUsdPriceDecimal);

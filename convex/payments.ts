@@ -273,6 +273,8 @@ export const getDashboardForCurrentUser = query({
         name: store.name,
         status: store.status,
         webhookUrl: store.webhookUrl,
+        successCallbackUrl: store.successCallbackUrl,
+        cancelCallbackUrl: store.cancelCallbackUrl,
         withdrawAddress: store.withdrawAddress,
       })),
       webhookAttempts: webhookAttempts
@@ -322,6 +324,8 @@ export const createStore = mutation({
     name: v.string(),
     withdrawAddress: v.string(),
     webhookUrl: v.optional(v.string()),
+    successCallbackUrl: v.optional(v.string()),
+    cancelCallbackUrl: v.optional(v.string()),
     webhookSecret: v.string(),
     now: v.number(),
   },
@@ -332,6 +336,8 @@ export const createStore = mutation({
       name: args.name,
       withdrawAddress: args.withdrawAddress,
       webhookUrl: args.webhookUrl,
+      successCallbackUrl: args.successCallbackUrl,
+      cancelCallbackUrl: args.cancelCallbackUrl,
       webhookSecret: args.webhookSecret,
       createdAt: args.now,
       status: "active",
@@ -346,6 +352,8 @@ export const createStoreForCurrentUser = mutation({
     name: v.string(),
     withdrawAddress: v.string(),
     webhookUrl: v.optional(v.string()),
+    successCallbackUrl: v.optional(v.string()),
+    cancelCallbackUrl: v.optional(v.string()),
     webhookSecret: v.string(),
     now: v.number(),
   },
@@ -357,12 +365,88 @@ export const createStoreForCurrentUser = mutation({
       name: args.name,
       withdrawAddress: args.withdrawAddress,
       webhookUrl: args.webhookUrl,
+      successCallbackUrl: args.successCallbackUrl,
+      cancelCallbackUrl: args.cancelCallbackUrl,
       webhookSecret: args.webhookSecret,
       createdAt: args.now,
       status: "active",
     });
 
     return { storeId };
+  },
+});
+
+export const updateStore = mutation({
+  args: {
+    developerId: v.string(),
+    storeId: v.string(),
+    name: v.optional(v.string()),
+    withdrawAddress: v.optional(v.string()),
+    webhookUrl: v.optional(v.union(v.string(), v.null())),
+    successCallbackUrl: v.optional(v.union(v.string(), v.null())),
+    cancelCallbackUrl: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.object({ storeId: v.string() }),
+  handler: async (ctx, args) => {
+    const store = await ctx.db.get(args.storeId as never);
+    if (!store || store.developerId !== args.developerId) {
+      throw new Error("Store not found");
+    }
+
+    await ctx.db.patch(args.storeId as never, {
+      ...(args.name !== undefined ? { name: args.name } : {}),
+      ...(args.withdrawAddress !== undefined
+        ? { withdrawAddress: args.withdrawAddress }
+        : {}),
+      ...(args.webhookUrl !== undefined
+        ? { webhookUrl: args.webhookUrl ?? undefined }
+        : {}),
+      ...(args.successCallbackUrl !== undefined
+        ? { successCallbackUrl: args.successCallbackUrl ?? undefined }
+        : {}),
+      ...(args.cancelCallbackUrl !== undefined
+        ? { cancelCallbackUrl: args.cancelCallbackUrl ?? undefined }
+        : {}),
+    });
+
+    return { storeId: args.storeId };
+  },
+});
+
+export const updateStoreForCurrentUser = mutation({
+  args: {
+    storeId: v.string(),
+    name: v.optional(v.string()),
+    withdrawAddress: v.optional(v.string()),
+    webhookUrl: v.optional(v.union(v.string(), v.null())),
+    successCallbackUrl: v.optional(v.union(v.string(), v.null())),
+    cancelCallbackUrl: v.optional(v.union(v.string(), v.null())),
+  },
+  returns: v.object({ storeId: v.string() }),
+  handler: async (ctx, args) => {
+    const developer = await getCurrentDeveloper(ctx);
+    const store = await ctx.db.get(args.storeId as never);
+    if (!store || store.developerId !== developer._id) {
+      throw new Error("Store not found");
+    }
+
+    await ctx.db.patch(args.storeId as never, {
+      ...(args.name !== undefined ? { name: args.name } : {}),
+      ...(args.withdrawAddress !== undefined
+        ? { withdrawAddress: args.withdrawAddress }
+        : {}),
+      ...(args.webhookUrl !== undefined
+        ? { webhookUrl: args.webhookUrl ?? undefined }
+        : {}),
+      ...(args.successCallbackUrl !== undefined
+        ? { successCallbackUrl: args.successCallbackUrl ?? undefined }
+        : {}),
+      ...(args.cancelCallbackUrl !== undefined
+        ? { cancelCallbackUrl: args.cancelCallbackUrl ?? undefined }
+        : {}),
+    });
+
+    return { storeId: args.storeId };
   },
 });
 
@@ -376,6 +460,8 @@ export const getStoreForDeveloper = query({
       name: v.string(),
       withdrawAddress: v.string(),
       webhookUrl: v.optional(v.string()),
+      successCallbackUrl: v.optional(v.string()),
+      cancelCallbackUrl: v.optional(v.string()),
       webhookSecret: v.string(),
       status: v.string(),
     }),
@@ -392,6 +478,8 @@ export const getStoreForDeveloper = query({
       name: store.name,
       withdrawAddress: store.withdrawAddress,
       webhookUrl: store.webhookUrl,
+      successCallbackUrl: store.successCallbackUrl,
+      cancelCallbackUrl: store.cancelCallbackUrl,
       webhookSecret: store.webhookSecret,
       status: store.status,
     };
@@ -578,6 +666,7 @@ export const getHostedCheckout = query({
       receivedAtomic: checkout.receivedAtomic,
       requiredConfirmations: checkout.requiredConfirmations,
       status: checkout.status,
+      storeId: checkout.storeId,
       storeName: store?.name,
       successUrl: checkout.successUrl,
       txHash: checkout.txHash,

@@ -1,9 +1,9 @@
 "use client";
 
 import {
+  AlertTriangle,
   CheckCircle2,
   Copy,
-  ExternalLink,
   LockKeyhole,
   RadioTower,
   ShieldCheck,
@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export type HostedCheckoutData = {
-  address: string;
+  address?: string;
   amountAtomic: string;
   amountUsdCents?: string;
   cancelUrl?: string;
@@ -29,8 +29,12 @@ export type HostedCheckoutData = {
   receivedAtomic: string;
   requiredConfirmations: number;
   status: string;
+  storeId: string;
   storeName?: string;
+  subaddress?: string;
   successUrl?: string;
+  signedCancelUrl?: string;
+  signedSuccessUrl?: string;
   txHash?: string;
   xmrUsdPriceDecimal?: string;
   xmrUsdPriceMicro?: string;
@@ -77,6 +81,10 @@ export function HostedCheckout({
     ),
   );
   const isComplete = completeStatuses.has(checkout.status);
+  const canRedirect =
+    isComplete ||
+    (checkout.confirmations >= checkout.requiredConfirmations &&
+      isAtomicAtLeast(checkout.receivedAtomic, checkout.amountAtomic));
   const isExpired = checkout.status === "expired";
   const amountXmr = useMemo(
     () => formatAtomic(checkout.amountAtomic),
@@ -90,6 +98,15 @@ export function HostedCheckout({
     () => formatAtomic(checkout.receivedAtomic),
     [checkout.receivedAtomic],
   );
+  const paymentAddress = checkout.address ?? checkout.subaddress ?? "";
+
+  useEffect(() => {
+    if (!canRedirect || !checkout.signedSuccessUrl) {
+      return;
+    }
+
+    window.location.assign(checkout.signedSuccessUrl);
+  }, [canRedirect, checkout.signedSuccessUrl]);
 
   async function copy(value: string, label: string) {
     await navigator.clipboard.writeText(value);
@@ -122,12 +139,15 @@ export function HostedCheckout({
               {statusLabel(checkout.status)}
             </Badge>
             <h1 className="mt-5 max-w-xl font-semibold text-4xl tracking-normal md:text-[3rem] md:leading-[1.08]">
-              Pay {displayAmount} to {checkout.storeName ?? "this checkout"}.
+              {displayAmount}
             </h1>
+            <p className="mt-3 text-muted-foreground text-sm">
+              {checkout.storeName ?? "Checkout payment"}
+            </p>
             <p className="mt-4 max-w-md text-muted-foreground leading-7">
-              Scan with your Monero wallet and send the exact converted amount.
-              This page updates automatically while the wallet watches the
-              chain.
+              {isExpired
+                ? "This checkout can no longer accept a payment."
+                : "Scan with your Monero wallet and send the exact amount. This page redirects automatically after the required confirmations."}
             </p>
           </div>
 
@@ -153,9 +173,13 @@ export function HostedCheckout({
         <section className="grid gap-5 md:pt-8">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h2 className="font-medium text-lg">Scan to pay</h2>
+              <h2 className="font-medium text-lg">
+                {isExpired ? "Checkout expired" : "Scan to pay"}
+              </h2>
               <p className="text-muted-foreground text-sm">
-                Use a Monero wallet or copy the address below.
+                {isExpired
+                  ? "This payment session timed out after inactivity."
+                  : "Use a Monero wallet or copy the address below."}
               </p>
             </div>
             <Badge variant={isExpired ? "warning" : "muted"}>
@@ -163,45 +187,55 @@ export function HostedCheckout({
             </Badge>
           </div>
 
-          <div className="grid gap-6 border-border border-y py-6 md:grid-cols-[168px_1fr]">
-            <div className="grid size-[168px] place-items-center rounded-md border border-border bg-white p-3">
-              <Image
-                src={qrDataUrl}
-                alt="Monero payment QR code"
-                width={144}
-                height={144}
-                className="size-full object-contain"
-                unoptimized
-                priority
-              />
-            </div>
-
-            <div className="grid content-start gap-3">
-              <PaymentField label="Checkout amount" value={displayAmount} />
-              {displayAmount !== amountXmr && (
-                <PaymentField label="Exact Monero amount" value={amountXmr} />
-              )}
-              {checkout.xmrUsdPriceDecimal && (
-                <PaymentField
-                  label="Locked XMR/USD rate"
-                  value={`$${checkout.xmrUsdPriceDecimal}`}
-                />
-              )}
-              <PaymentField label="Address" value={checkout.address} mono />
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Button onClick={() => copy(checkout.address, "Address")}>
-                  <Copy />
-                  Copy address
-                </Button>
-                <Button asChild variant="outline">
-                  <a href={paymentUri}>
-                    <Wallet />
-                    Open wallet
-                  </a>
-                </Button>
+          {isExpired ? (
+            <div className="grid gap-4 border-border border-y py-8">
+              <div className="flex gap-4 rounded-md border border-border bg-muted/40 p-5">
+                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-300" />
+                <div>
+                  <p className="font-medium">This checkout has expired.</p>
+                  <p className="mt-2 text-muted-foreground text-sm leading-6">
+                    The transaction window closed after inactivity. Do not send
+                    funds to this checkout address. Create a new checkout from
+                    the merchant app to continue.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="grid gap-6 border-border border-y py-6 md:grid-cols-[168px_1fr]">
+              <div className="grid size-[168px] place-items-center rounded-md border border-border bg-white p-3">
+                <Image
+                  src={qrDataUrl}
+                  alt="Monero payment QR code"
+                  width={144}
+                  height={144}
+                  className="size-full object-contain"
+                  unoptimized
+                  priority
+                />
+              </div>
+
+              <div className="grid content-start gap-3">
+                <PaymentField label="Amount" value={amountXmr} />
+                <PaymentField label="Address" value={paymentAddress} mono />
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Button
+                    disabled={!paymentAddress}
+                    onClick={() => copy(paymentAddress, "Address")}
+                  >
+                    <Copy />
+                    Copy address
+                  </Button>
+                  <Button asChild variant="outline">
+                    <a href={paymentUri}>
+                      <Wallet />
+                      Open wallet
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="border-border border-b pb-5">
             <div className="flex items-center justify-between gap-3 text-sm">
@@ -217,8 +251,8 @@ export function HostedCheckout({
               />
             </div>
             <p className="mt-3 text-muted-foreground text-sm">
-              {isComplete
-                ? "Payment verified. The merchant has been notified."
+              {canRedirect
+                ? "Payment verified. Redirecting to the merchant..."
                 : "Waiting for the required block confirmations."}
             </p>
           </div>
@@ -228,21 +262,6 @@ export function HostedCheckout({
               {copyStatus}
             </p>
           )}
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            {checkout.cancelUrl && !isComplete && (
-              <Button asChild variant="outline">
-                <Link href={checkout.cancelUrl}>Cancel</Link>
-              </Button>
-            )}
-            {checkout.successUrl && isComplete && (
-              <Button asChild>
-                <Link href={checkout.successUrl}>
-                  Continue <ExternalLink />
-                </Link>
-              </Button>
-            )}
-          </div>
         </section>
       </div>
     </main>
@@ -323,6 +342,14 @@ function formatUsdCents(amountUsdCents: string) {
   const dollars = cents / 100n;
   const remainder = (cents % 100n).toString().padStart(2, "0");
   return `$${dollars.toString()}.${remainder}`;
+}
+
+function isAtomicAtLeast(value: string, minimum: string) {
+  try {
+    return BigInt(value) >= BigInt(minimum);
+  } catch {
+    return false;
+  }
 }
 
 function formatAtomic(amountAtomic: string) {

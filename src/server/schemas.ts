@@ -8,10 +8,24 @@ export const CreateDeveloperSchema = z.object({
 });
 
 export const CreateStoreSchema = z.object({
+  cancelCallbackUrl: url.optional(),
   name: z.string().min(1),
+  successCallbackUrl: url.optional(),
   withdrawAddress: z.string().min(20),
   webhookUrl: url.optional(),
 });
+
+export const UpdateStoreSchema = z
+  .object({
+    cancelCallbackUrl: url.nullable().optional(),
+    name: z.string().min(1).optional(),
+    successCallbackUrl: url.nullable().optional(),
+    webhookUrl: url.nullable().optional(),
+    withdrawAddress: z.string().min(20).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Provide at least one store field to update",
+  });
 
 export const CreateCheckoutSchema = z
   .object({

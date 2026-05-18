@@ -33,21 +33,37 @@ export async function POST(request: Request) {
       ? assertAtomicAmount(input.amountAtomic)
       : usdCentsToAtomicFromUsdPrice({
           amountUsdCents: amountUsdCents as string,
-          xmrUsdPriceDecimal: pricing?.priceUsdDecimal as string,
+          xmrUsdPriceDecimal: pricing?.priceUsdDecimal,
+          xmrUsdPriceMicro: pricing?.priceUsdMicro,
         });
 
     if (BigInt(amountAtomic) < BigInt(config.MIN_CHECKOUT_AMOUNT_ATOMIC)) {
       throw new ApiError(400, "Checkout amount is below the minimum amount");
     }
 
+    const store = await convex.query<{
+      id: string;
+      status: string;
+      successCallbackUrl?: string;
+      cancelCallbackUrl?: string;
+    } | null>(convex.refs.getStoreForDeveloper, {
+      developerId: developer.id,
+      storeId: input.storeId,
+    });
+    if (!store || store.status !== "active") {
+      throw new ApiError(404, "Store not found");
+    }
+    const successUrl = input.successUrl ?? store.successCallbackUrl;
+    const cancelUrl = input.cancelUrl ?? store.cancelCallbackUrl;
+
     const requestFingerprint = createRequestFingerprint({
       amountAtomic,
       amountUsdCents,
-      cancelUrl: input.cancelUrl,
+      cancelUrl,
       metadata: input.metadata ?? {},
       pricingCurrency: amountUsdCents ? "USD" : "XMR",
       storeId: input.storeId,
-      successUrl: input.successUrl,
+      successUrl,
     });
 
     if (input.idempotencyKey) {
@@ -89,17 +105,6 @@ export async function POST(request: Request) {
       }
     }
 
-    const store = await convex.query<{ id: string; status: string } | null>(
-      convex.refs.getStoreForDeveloper,
-      {
-        developerId: developer.id,
-        storeId: input.storeId,
-      },
-    );
-    if (!store || store.status !== "active") {
-      throw new ApiError(404, "Store not found");
-    }
-
     const wallet = createWalletClient();
     const subaddress = await wallet.createSubaddress();
     const now = Date.now();
@@ -112,7 +117,7 @@ export async function POST(request: Request) {
       {
         amountAtomic,
         amountUsdCents,
-        cancelUrl: input.cancelUrl,
+        cancelUrl,
         developerId: developer.id,
         expiresAt: now + config.CHECKOUT_EXPIRY_MINUTES * 60_000,
         idempotencyKey: input.idempotencyKey,
@@ -125,7 +130,7 @@ export async function POST(request: Request) {
         subaddress: subaddress.address,
         subaddressIndexMajor: subaddress.majorIndex,
         subaddressIndexMinor: subaddress.minorIndex,
-        successUrl: input.successUrl,
+        successUrl,
         xmrUsdPriceFetchedAt: pricing?.fetchedAt,
         xmrUsdPriceDecimal: pricing?.priceUsdDecimal,
         xmrUsdPriceMicro: pricing?.priceUsdMicro,
@@ -144,6 +149,8 @@ export async function POST(request: Request) {
         pricingCurrency: amountUsdCents ? "USD" : "XMR",
         requiredConfirmations,
         status: "waiting_for_payment",
+        cancelUrl,
+        successUrl,
         xmrUsdPriceDecimal: pricing?.priceUsdDecimal,
         xmrUsdPriceMicro: pricing?.priceUsdMicro,
       },

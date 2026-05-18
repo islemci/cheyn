@@ -1,7 +1,6 @@
-import { createHash, randomBytes } from "node:crypto";
-import http from "node:http";
-import https from "node:https";
-import fetch from "node-fetch";
+import { randomBytes } from "node:crypto";
+import DigestFetch from "digest-fetch";
+import nodeFetch from "node-fetch";
 
 import { getConfig } from "./config";
 import type { WalletClient, WalletTransfer } from "./types";
@@ -11,119 +10,41 @@ type JsonRpcResponse<T> = {
   error?: { code: number; message: string };
 };
 
-type DigestChallenge = {
-  algorithm?: string;
-  nonce: string;
-  opaque?: string;
-  qop?: string;
-  realm: string;
-};
-
-function md5(value: string) {
-  return createHash("md5").update(value).digest("hex");
-}
-
-function parseDigestChallenge(header: string | null): DigestChallenge {
-  if (!header) {
-    throw new Error("Wallet RPC did not return a Digest challenge");
-  }
-
-  const digestHeader = header
-    .split(/,\s*Digest\s+/)[0]
-    ?.replace(/^Digest\s+/i, "");
-  const parts = Object.fromEntries(
-    [...digestHeader.matchAll(/([a-zA-Z0-9_-]+)=("[^"]*"|[^,]*)/g)].map(
-      ([, key, value]) => [key, value.replace(/^"|"$/g, "")],
-    ),
-  );
-
-  if (!parts.realm || !parts.nonce) {
-    throw new Error(`Invalid wallet RPC Digest challenge: ${header}`);
-  }
-
-  return parts as DigestChallenge;
-}
-
-function createDigestAuthorization(args: {
-  challenge: DigestChallenge;
-  password: string;
-  url: URL;
-  username: string;
-}) {
-  const method = "POST";
-  const uri = `${args.url.pathname}${args.url.search}`;
-  const qop = args.challenge.qop?.split(",")[0] ?? "auth";
-  const nc = "00000001";
-  const cnonce = Buffer.from(randomBytes(24).toString("hex")).toString(
-    "base64",
-  );
-  const ha1 = md5(`${args.username}:${args.challenge.realm}:${args.password}`);
-  const ha2 = md5(`${method}:${uri}`);
-  const response = md5(
-    `${ha1}:${args.challenge.nonce}:${nc}:${cnonce}:${qop}:${ha2}`,
-  );
-
-  const fields = [
-    `username="${args.username}"`,
-    `realm="${args.challenge.realm}"`,
-    `nonce="${args.challenge.nonce}"`,
-    `uri="${uri}"`,
-    `cnonce="${cnonce}"`,
-    `nc=${nc}`,
-    `qop=${qop}`,
-    `response="${response}"`,
-    `algorithm=${args.challenge.algorithm ?? "MD5"}`,
-  ];
-
-  if (args.challenge.opaque) {
-    fields.push(`opaque="${args.challenge.opaque}"`);
-  }
-
-  return `Digest ${fields.join(", ")}`;
-}
-
 async function fetchWithDigest(url: string, body: string) {
   const config = getConfig();
   if (!config.MONERO_RPC_USER || !config.MONERO_RPC_PASS) {
     throw new Error("MONERO_RPC_USER and MONERO_RPC_PASS are required");
   }
+  const username = config.MONERO_RPC_USER.trim();
+  const password = config.MONERO_RPC_PASS.trim();
 
-  const parsedUrl = new URL(url);
-  const agent =
-    parsedUrl.protocol === "https:"
-      ? new https.Agent({ keepAlive: true, maxSockets: 1 })
-      : new http.Agent({ keepAlive: true, maxSockets: 1 });
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    config.MONERO_RPC_TIMEOUT_MS,
+  );
+  const client = new DigestFetch(username, password);
+  client.getClient = async () => nodeFetch;
 
-  const first = await fetch(url, {
-    agent,
-    headers: { "content-type": "application/json" },
-    method: "POST",
-  });
-  await first.text();
-
-  const challenge = parseDigestChallenge(first.headers.get("www-authenticate"));
-  const authorization = createDigestAuthorization({
-    challenge,
-    password: config.MONERO_RPC_PASS,
-    url: parsedUrl,
-    username: config.MONERO_RPC_USER,
-  });
-
-  const response = await fetch(url, {
-    agent,
-    body,
-    headers: {
-      authorization,
-      "content-type": "application/json",
-    },
-    method: "POST",
-  });
-  agent.destroy();
-
-  return response;
+  try {
+    return await client.fetch(url, {
+      body,
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
-async function rpc<T>(method: string, params: Record<string, unknown> = {}) {
+async function rpc<T>(
+  method: string,
+  params: Record<string, unknown> = {},
+  options: { retries?: number } = {},
+) {
   const config = getConfig();
   if (!config.MONERO_RPC_URL) {
     throw new Error("MONERO_RPC_URL is required");
@@ -136,11 +57,42 @@ async function rpc<T>(method: string, params: Record<string, unknown> = {}) {
     params,
   });
 
-  const response = await fetchWithDigest(config.MONERO_RPC_URL, body);
-  const text = await response.text();
+  const attempts = (options.retries ?? 0) + 1;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await rpcAttempt<T>(method, config.MONERO_RPC_URL, body);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isRetryableRpcError(error)) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    }
+  }
+
+  throw lastError;
+}
+
+async function rpcAttempt<T>(method: string, url: string, body: string) {
+  const response = await fetchWithDigest(url, body);
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (error) {
+    throw new Error(`Wallet RPC ${method} response body read failed`, {
+      cause: error,
+    });
+  }
   const contentType = response.headers.get("content-type") ?? "";
 
   if (!contentType.includes("application/json")) {
+    if (response.status === 401) {
+      throw new Error(
+        `Wallet RPC ${method} authentication failed for ${url} as user "${getConfig().MONERO_RPC_USER?.trim() ?? ""}". Check MONERO_RPC_USER and MONERO_RPC_PASS.`,
+      );
+    }
     throw new Error(
       `Wallet RPC ${method} returned ${response.status} ${contentType}: ${text.slice(
         0,
@@ -164,6 +116,21 @@ async function rpc<T>(method: string, params: Record<string, unknown> = {}) {
   return data.result;
 }
 
+function isRetryableRpcError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("aborted") ||
+    message.includes("body read failed") ||
+    message.includes("econnreset") ||
+    message.includes("socket hang up") ||
+    message.includes("network timeout") ||
+    message.includes("request-timeout")
+  );
+}
+
 function normalizeAmount(value: unknown) {
   if (typeof value === "number") {
     return Math.trunc(value).toString();
@@ -179,6 +146,8 @@ export function createRealWalletClient(): WalletClient {
     async getBalance() {
       const result = await rpc<{ balance: number; unlocked_balance: number }>(
         "get_balance",
+        {},
+        { retries: getConfig().MONERO_RPC_RETRIES },
       );
       return {
         balanceAtomic: normalizeAmount(result.balance),
@@ -186,7 +155,11 @@ export function createRealWalletClient(): WalletClient {
       };
     },
     async getAddress() {
-      const result = await rpc<{ address: string }>("get_address");
+      const result = await rpc<{ address: string }>(
+        "get_address",
+        {},
+        { retries: getConfig().MONERO_RPC_RETRIES },
+      );
       return { address: result.address };
     },
     async createSubaddress() {
@@ -205,7 +178,11 @@ export function createRealWalletClient(): WalletClient {
       const result = await rpc<{
         in?: Array<Record<string, unknown>>;
         pool?: Array<Record<string, unknown>>;
-      }>("get_transfers", { in: true, pool: true });
+      }>(
+        "get_transfers",
+        { in: true, pool: true },
+        { retries: getConfig().MONERO_RPC_RETRIES },
+      );
 
       const transfers = [...(result.in ?? []), ...(result.pool ?? [])];
       return transfers.flatMap((transfer) => {
@@ -243,7 +220,11 @@ export function createRealWalletClient(): WalletClient {
       return { txHash: result.tx_hash };
     },
     async getHeight() {
-      const result = await rpc<{ height: number }>("get_height");
+      const result = await rpc<{ height: number }>(
+        "get_height",
+        {},
+        { retries: getConfig().MONERO_RPC_RETRIES },
+      );
       return { height: result.height };
     },
   };

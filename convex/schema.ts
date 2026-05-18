@@ -20,6 +20,8 @@ export default defineSchema({
     name: v.string(),
     withdrawAddress: v.string(),
     webhookUrl: v.optional(v.string()),
+    successCallbackUrl: v.optional(v.string()),
+    cancelCallbackUrl: v.optional(v.string()),
     webhookSecret: v.string(),
     createdAt: v.number(),
     status: v.string(),

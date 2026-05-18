@@ -23,6 +23,10 @@ const refs = {
   createStoreForCurrentUser: makeFunctionReference<"mutation">(
     "payments.js:createStoreForCurrentUser",
   ),
+  updateStore: makeFunctionReference<"mutation">("payments.js:updateStore"),
+  updateStoreForCurrentUser: makeFunctionReference<"mutation">(
+    "payments.js:updateStoreForCurrentUser",
+  ),
   getStoreForDeveloper: makeFunctionReference<"query">(
     "payments.js:getStoreForDeveloper",
   ),

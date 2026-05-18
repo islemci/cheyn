@@ -1,3 +1,4 @@
+import { createCheckoutCallbackUrls } from "@/server/callbacks";
 import { getConfig } from "@/server/config";
 import { convex } from "@/server/convex-client";
 import { ApiError, handleApiError, json } from "@/server/http";
@@ -10,19 +11,28 @@ export async function GET(
 ) {
   try {
     const { checkoutId } = await context.params;
-    const checkout = await convex.query<Record<string, unknown> | null>(
-      convex.refs.getHostedCheckout,
-      { checkoutId },
-    );
+    const checkoutWithStore = await convex.query<{
+      checkout: Record<string, unknown> | null;
+      store: { webhookSecret: string } | null;
+    } | null>(convex.refs.getCheckoutWithStore, { checkoutId });
+    const checkout = checkoutWithStore?.checkout;
 
-    if (!checkout) {
+    if (!checkout || !checkoutWithStore?.store) {
       throw new ApiError(404, "Checkout not found");
     }
-
-    return json({
+    const hostedCheckout = {
       ...checkout,
+      address: checkout.subaddress,
       requiredConfirmations:
         checkout.requiredConfirmations ?? getConfig().REQUIRED_CONFIRMATIONS,
+    };
+
+    return json({
+      ...hostedCheckout,
+      ...createCheckoutCallbackUrls({
+        checkout: hostedCheckout as never,
+        store: checkoutWithStore.store,
+      }),
     });
   } catch (error) {
     return handleApiError(error);

@@ -17,6 +17,8 @@ export async function POST(request: Request) {
         developerId: developer.id,
         name: input.name,
         now: Date.now(),
+        cancelCallbackUrl: input.cancelCallbackUrl,
+        successCallbackUrl: input.successCallbackUrl,
         webhookSecret,
         webhookUrl: input.webhookUrl,
         withdrawAddress: input.withdrawAddress,
