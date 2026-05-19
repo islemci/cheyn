@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -185,7 +185,11 @@ export function DashboardConsole({
   config: DashboardConfig;
   data: DashboardData;
 }) {
-  const liveData = useQuery(api.payments.getDashboardForCurrentUser);
+  const { isAuthenticated } = useConvexAuth();
+  const liveData = useQuery(
+    api.payments.getDashboardForCurrentUser,
+    isAuthenticated ? {} : "skip",
+  );
   const data = (liveData ?? initialData) as DashboardData;
   const primaryStore = data.stores[0];
   const stats = useMemo(
