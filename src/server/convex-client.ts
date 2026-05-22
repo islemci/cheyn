@@ -60,6 +60,9 @@ const refs = {
   listScannableWalletContexts: makeFunctionReference<"query">(
     "payments.js:listScannableWalletContexts",
   ),
+  listProvisioningViewOnlyStores: makeFunctionReference<"query">(
+    "payments.js:listProvisioningViewOnlyStores",
+  ),
   recordPaymentObservation: makeFunctionReference<"mutation">(
     "payments.js:recordPaymentObservation",
   ),

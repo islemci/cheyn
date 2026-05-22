@@ -31,11 +31,17 @@ export function settlementTypeForMode(mode: PaymentMode): SettlementType {
 }
 
 function hostedWalletReference() {
-  return getConfig().WALLET_HOSTED_NAME;
+  return walletReference(getConfig().WALLET_HOSTED_NAME);
 }
 
 function viewOnlyWalletReference(storeId: string) {
-  return `view-only/store_${storeId}/wallet`;
+  return walletReference(`view-only/store_${storeId}/wallet`);
+}
+
+function walletReference(relativePath: string) {
+  const baseDir = getConfig().WALLET_BASE_DIR.replace(/\/+$/, "");
+  const normalizedPath = relativePath.replace(/^\/+/, "");
+  return `${baseDir}/${normalizedPath}`;
 }
 
 export class HostedWalletBackend {

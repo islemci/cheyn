@@ -456,7 +456,7 @@ export const updateStoreWalletReference = mutation({
     developerId: v.string(),
     storeId: v.string(),
     status: v.optional(v.string()),
-    viewOnlyWalletReference: v.string(),
+    viewOnlyWalletReference: v.optional(v.string()),
   },
   returns: v.object({ storeId: v.string() }),
   handler: async (ctx, args) => {
@@ -466,7 +466,9 @@ export const updateStoreWalletReference = mutation({
     }
     await ctx.db.patch(args.storeId as never, {
       status: args.status ?? store.status,
-      viewOnlyWalletReference: args.viewOnlyWalletReference,
+      ...(args.viewOnlyWalletReference !== undefined
+        ? { viewOnlyWalletReference: args.viewOnlyWalletReference }
+        : {}),
     });
     return { storeId: args.storeId };
   },
@@ -834,6 +836,22 @@ export const listScannableWalletContexts = query({
     }
 
     return [...stores.values()];
+  },
+});
+
+export const listProvisioningViewOnlyStores = query({
+  args: {},
+  returns: v.array(v.any()),
+  handler: async (ctx) => {
+    const stores = await ctx.db.query("stores").collect();
+    return stores
+      .filter(
+        (store) =>
+          store.paymentMode === "view_only" &&
+          store.status === "provisioning" &&
+          !store.viewOnlyWalletReference,
+      )
+      .map((store) => ({ id: store._id, ...store }));
   },
 });
 

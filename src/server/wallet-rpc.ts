@@ -104,6 +104,14 @@ async function rpcAttempt<T>(method: string, url: string, body: string) {
   const data = JSON.parse(text) as JsonRpcResponse<T>;
 
   if (!response.ok || data.error) {
+    if (
+      method === "generate_from_keys" &&
+      data.error?.message.toLowerCase().includes("no wallet dir configured")
+    ) {
+      throw new Error(
+        "Wallet RPC generate_from_keys failed because monero-wallet-rpc was started without --wallet-dir. Configure --wallet-dir on the wallet RPC host and set WALLET_BASE_DIR to that directory.",
+      );
+    }
     throw new Error(
       data.error?.message ?? `Wallet RPC failed: ${response.status}`,
     );

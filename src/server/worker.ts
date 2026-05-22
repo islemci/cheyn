@@ -32,6 +32,7 @@ type Checkout = {
 
 type Store = {
   id: string;
+  developerId: string;
   paymentMode?: PaymentMode;
   withdrawAddress?: string;
   encryptedPrivateViewKey?: string;
@@ -142,6 +143,62 @@ async function refreshPriceIfDue() {
     });
   } catch (error) {
     errorWorker("price refresh failed", error);
+  }
+}
+
+async function provisionViewOnlyStores() {
+  const stores = await convex.query<Store[]>(
+    convex.refs.listProvisioningViewOnlyStores,
+    {},
+  );
+  if (stores.length === 0) {
+    return;
+  }
+
+  logWorker("provisioning view-only stores", { stores: stores.length });
+  for (const store of stores) {
+    if (
+      !store.merchantPrimaryAddress ||
+      !store.encryptedPrivateViewKey ||
+      store.restoreHeight === undefined
+    ) {
+      warnWorker("view-only store missing provisioning fields", {
+        storeId: store.id,
+      });
+      await convex.mutation(convex.refs.updateStoreWalletReference, {
+        developerId: store.developerId,
+        status: "failed",
+        storeId: store.id,
+      });
+      continue;
+    }
+
+    try {
+      const privateViewKey = walletManager.decryptStoreViewKey({
+        ...store,
+        mode: store.paymentMode ?? "view_only",
+      });
+      const viewOnlyWalletReference = await walletManager.createViewOnlyWallet({
+        merchantPrimaryAddress: store.merchantPrimaryAddress,
+        privateViewKey,
+        restoreHeight: store.restoreHeight,
+        storeId: store.id,
+      });
+      await convex.mutation(convex.refs.updateStoreWalletReference, {
+        developerId: store.developerId,
+        status: "active",
+        storeId: store.id,
+        viewOnlyWalletReference,
+      });
+      logWorker("view-only wallet provisioned", {
+        storeId: store.id,
+        viewOnlyWalletReference,
+      });
+    } catch (error) {
+      errorWorker("view-only wallet provisioning failed", error, {
+        storeId: store.id,
+      });
+    }
   }
 }
 
@@ -974,6 +1031,7 @@ async function processWebhookRetries() {
 export async function runWorkerOnce() {
   logWorker("worker loop started");
   await refreshPriceIfDue();
+  await provisionViewOnlyStores();
   await scanPayments();
   await collectEligiblePayouts();
   await processPayouts();

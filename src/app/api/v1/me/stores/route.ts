@@ -7,7 +7,6 @@ import { convex } from "@/server/convex-client";
 import { handleApiError, parseJson } from "@/server/http";
 import { CreateStoreSchema } from "@/server/schemas";
 import { encryptPrivateViewKey } from "@/server/security";
-import { createWalletManager } from "@/server/wallet-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -55,23 +54,6 @@ export async function POST(request: Request) {
       },
     );
 
-    let viewOnlyWalletReference: string | undefined;
-    if (input.paymentMode === "view_only") {
-      viewOnlyWalletReference =
-        await createWalletManager().createViewOnlyWallet({
-          merchantPrimaryAddress: input.merchantPrimaryAddress,
-          privateViewKey: input.privateViewKey,
-          restoreHeight: input.restoreHeight,
-          storeId: result.storeId,
-        });
-      await convex.mutation(convex.refs.updateStoreWalletReference, {
-        developerId: developer.id,
-        status: "active",
-        storeId: result.storeId,
-        viewOnlyWalletReference,
-      });
-    }
-
     return NextResponse.json(
       {
         paymentMode: input.paymentMode,
@@ -80,7 +62,7 @@ export async function POST(request: Request) {
             ? "direct_to_wallet"
             : "platform_payout",
         storeId: result.storeId,
-        viewOnlyWalletReference,
+        status: input.paymentMode === "view_only" ? "provisioning" : "active",
         webhookSecret,
       },
       { status: 201 },
