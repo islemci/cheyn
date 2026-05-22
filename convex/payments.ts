@@ -281,6 +281,10 @@ export const getDashboardForCurrentUser = query({
         successCallbackUrl: store.successCallbackUrl,
         cancelCallbackUrl: store.cancelCallbackUrl,
         merchantPrimaryAddress: store.merchantPrimaryAddress,
+        provisioningError: store.provisioningError,
+        provisioningProgress: store.provisioningProgress,
+        provisioningStep: store.provisioningStep,
+        provisioningUpdatedAt: store.provisioningUpdatedAt,
         restoreHeight: store.restoreHeight,
         settlementType:
           (store.paymentMode ?? "hosted") === "view_only"
@@ -360,6 +364,20 @@ export const createStore = mutation({
       encryptionKeyVersion: args.encryptionKeyVersion,
       restoreHeight: args.restoreHeight,
       viewOnlyWalletReference: args.viewOnlyWalletReference,
+      provisioningProgress:
+        args.paymentMode === "view_only"
+          ? args.status === "active"
+            ? 100
+            : 5
+          : undefined,
+      provisioningStep:
+        args.paymentMode === "view_only"
+          ? args.status === "active"
+            ? "ready"
+            : "queued"
+          : undefined,
+      provisioningUpdatedAt:
+        args.paymentMode === "view_only" ? args.now : undefined,
       webhookUrl: args.webhookUrl,
       successCallbackUrl: args.successCallbackUrl,
       cancelCallbackUrl: args.cancelCallbackUrl,
@@ -402,6 +420,20 @@ export const createStoreForCurrentUser = mutation({
       encryptionKeyVersion: args.encryptionKeyVersion,
       restoreHeight: args.restoreHeight,
       viewOnlyWalletReference: args.viewOnlyWalletReference,
+      provisioningProgress:
+        args.paymentMode === "view_only"
+          ? args.status === "active"
+            ? 100
+            : 5
+          : undefined,
+      provisioningStep:
+        args.paymentMode === "view_only"
+          ? args.status === "active"
+            ? "ready"
+            : "queued"
+          : undefined,
+      provisioningUpdatedAt:
+        args.paymentMode === "view_only" ? args.now : undefined,
       webhookUrl: args.webhookUrl,
       successCallbackUrl: args.successCallbackUrl,
       cancelCallbackUrl: args.cancelCallbackUrl,
@@ -465,6 +497,37 @@ export const updateStoreWalletReference = mutation({
       throw new Error("Store not found");
     }
     await ctx.db.patch(args.storeId as never, {
+      status: args.status ?? store.status,
+      ...(args.viewOnlyWalletReference !== undefined
+        ? { viewOnlyWalletReference: args.viewOnlyWalletReference }
+        : {}),
+    });
+    return { storeId: args.storeId };
+  },
+});
+
+export const updateStoreProvisioningProgress = mutation({
+  args: {
+    developerId: v.string(),
+    storeId: v.string(),
+    now: v.number(),
+    progress: v.number(),
+    step: v.string(),
+    status: v.optional(v.string()),
+    error: v.optional(v.string()),
+    viewOnlyWalletReference: v.optional(v.string()),
+  },
+  returns: v.object({ storeId: v.string() }),
+  handler: async (ctx, args) => {
+    const store = await ctx.db.get(args.storeId as never);
+    if (!store || store.developerId !== args.developerId) {
+      throw new Error("Store not found");
+    }
+    await ctx.db.patch(args.storeId as never, {
+      provisioningError: args.error,
+      provisioningProgress: Math.max(0, Math.min(100, args.progress)),
+      provisioningStep: args.step,
+      provisioningUpdatedAt: args.now,
       status: args.status ?? store.status,
       ...(args.viewOnlyWalletReference !== undefined
         ? { viewOnlyWalletReference: args.viewOnlyWalletReference }

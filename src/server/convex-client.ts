@@ -27,6 +27,9 @@ const refs = {
   updateStoreWalletReference: makeFunctionReference<"mutation">(
     "payments.js:updateStoreWalletReference",
   ),
+  updateStoreProvisioningProgress: makeFunctionReference<"mutation">(
+    "payments.js:updateStoreProvisioningProgress",
+  ),
   updateStoreForCurrentUser: makeFunctionReference<"mutation">(
     "payments.js:updateStoreForCurrentUser",
   ),

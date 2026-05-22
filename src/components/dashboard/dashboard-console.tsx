@@ -43,6 +43,10 @@ type DashboardStore = {
   merchantPrimaryAddress?: string;
   name: string;
   paymentMode?: "hosted" | "view_only";
+  provisioningError?: string;
+  provisioningProgress?: number;
+  provisioningStep?: string;
+  provisioningUpdatedAt?: number;
   restoreHeight?: number;
   settlementType?: "platform_payout" | "direct_to_wallet";
   status: string;
@@ -1014,6 +1018,7 @@ function StoreEditor({ store }: { store: DashboardStore }) {
         </label>
       ) : (
         <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+          <ProvisioningProgress store={store} />
           <InfoRow
             label="Merchant wallet"
             value={truncateMiddle(store.merchantPrimaryAddress)}
@@ -1068,6 +1073,39 @@ function StoreEditor({ store }: { store: DashboardStore }) {
         {isSaving ? "Saving..." : "Save changes"}
       </Button>
     </form>
+  );
+}
+
+function ProvisioningProgress({ store }: { store: DashboardStore }) {
+  if ((store.paymentMode ?? "hosted") !== "view_only") {
+    return null;
+  }
+
+  const progress =
+    store.status === "active"
+      ? 100
+      : Math.max(0, Math.min(100, store.provisioningProgress ?? 0));
+  const step = formatProvisioningStep(store.provisioningStep, store.status);
+
+  return (
+    <div className="grid gap-2 rounded-md border border-border bg-background p-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-medium">Provisioning</span>
+        <span className="font-mono text-muted-foreground text-xs">
+          {progress}%
+        </span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-foreground transition-[width] duration-500"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <p className="text-muted-foreground text-xs">{step}</p>
+      {store.provisioningError && (
+        <p className="text-destructive text-xs">{store.provisioningError}</p>
+      )}
+    </div>
   );
 }
 
@@ -1431,6 +1469,31 @@ function formatSettlementType(settlementType?: string) {
   return settlementType === "direct_to_wallet"
     ? "Direct to wallet"
     : "Platform payout";
+}
+
+function formatProvisioningStep(step?: string, status?: string) {
+  if (status === "active") {
+    return "Ready";
+  }
+  if (status === "failed") {
+    return "Provisioning failed";
+  }
+  switch (step) {
+    case "queued":
+      return "Queued for worker";
+    case "validating_store":
+      return "Validating wallet setup";
+    case "decrypting_view_key":
+      return "Decrypting view key on worker";
+    case "creating_view_only_wallet":
+      return "Creating view-only wallet";
+    case "saving_wallet_reference":
+      return "Saving wallet reference";
+    case "ready":
+      return "Ready";
+    default:
+      return "Waiting for worker";
+  }
 }
 
 function formatAtomic(amountAtomic: string) {

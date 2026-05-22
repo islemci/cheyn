@@ -157,6 +157,30 @@ async function provisionViewOnlyStores() {
 
   logWorker("provisioning view-only stores", { stores: stores.length });
   for (const store of stores) {
+    const updateProgress = async (args: {
+      error?: string;
+      progress: number;
+      status?: string;
+      step: string;
+      viewOnlyWalletReference?: string;
+    }) =>
+      convex.mutation(convex.refs.updateStoreProvisioningProgress, {
+        developerId: store.developerId,
+        error: args.error,
+        now: Date.now(),
+        progress: args.progress,
+        status: args.status,
+        step: args.step,
+        storeId: store.id,
+        viewOnlyWalletReference: args.viewOnlyWalletReference,
+      });
+
+    await updateProgress({
+      progress: 10,
+      status: "provisioning",
+      step: "validating_store",
+    });
+
     if (
       !store.merchantPrimaryAddress ||
       !store.encryptedPrivateViewKey ||
@@ -165,18 +189,27 @@ async function provisionViewOnlyStores() {
       warnWorker("view-only store missing provisioning fields", {
         storeId: store.id,
       });
-      await convex.mutation(convex.refs.updateStoreWalletReference, {
-        developerId: store.developerId,
+      await updateProgress({
+        error: "View-only store is missing wallet setup fields",
+        progress: 100,
         status: "failed",
-        storeId: store.id,
+        step: "failed",
       });
       continue;
     }
 
     try {
+      await updateProgress({
+        progress: 25,
+        step: "decrypting_view_key",
+      });
       const privateViewKey = walletManager.decryptStoreViewKey({
         ...store,
         mode: store.paymentMode ?? "view_only",
+      });
+      await updateProgress({
+        progress: 45,
+        step: "creating_view_only_wallet",
       });
       const viewOnlyWalletReference = await walletManager.createViewOnlyWallet({
         merchantPrimaryAddress: store.merchantPrimaryAddress,
@@ -184,10 +217,15 @@ async function provisionViewOnlyStores() {
         restoreHeight: store.restoreHeight,
         storeId: store.id,
       });
-      await convex.mutation(convex.refs.updateStoreWalletReference, {
-        developerId: store.developerId,
+      await updateProgress({
+        progress: 80,
+        step: "saving_wallet_reference",
+        viewOnlyWalletReference,
+      });
+      await updateProgress({
+        progress: 100,
         status: "active",
-        storeId: store.id,
+        step: "ready",
         viewOnlyWalletReference,
       });
       logWorker("view-only wallet provisioned", {
@@ -197,6 +235,15 @@ async function provisionViewOnlyStores() {
     } catch (error) {
       errorWorker("view-only wallet provisioning failed", error, {
         storeId: store.id,
+      });
+      await updateProgress({
+        error:
+          error instanceof Error
+            ? error.message
+            : "View-only wallet provisioning failed",
+        progress: 100,
+        status: "failed",
+        step: "failed",
       });
     }
   }
