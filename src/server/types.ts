@@ -4,10 +4,14 @@ export type CheckoutStatus =
   | "seen"
   | "confirming"
   | "confirmed"
-  | "payout_pending"
-  | "paid_out"
+  | "settled"
   | "expired"
-  | "failed";
+  | "failed"
+  | "manual_review";
+
+export type PaymentMode = "hosted" | "view_only";
+
+export type SettlementType = "platform_payout" | "direct_to_wallet";
 
 export type WalletSubaddress = {
   address: string;
@@ -38,4 +42,14 @@ export type WalletClient = {
     amountAtomic: string;
   }) => Promise<{ txHash: string }>;
   getHeight: () => Promise<{ height: number }>;
+  openWallet: (args: { filename: string; password?: string }) => Promise<void>;
+  closeWallet: () => Promise<void>;
+  generateFromKeys: (args: {
+    address: string;
+    filename: string;
+    password?: string;
+    restoreHeight: number;
+    spendKey?: string;
+    viewKey: string;
+  }) => Promise<{ address: string; info?: string }>;
 };

@@ -227,6 +227,39 @@ export function createRealWalletClient(): WalletClient {
       );
       return { height: result.height };
     },
+    async openWallet(args) {
+      await rpc(
+        "open_wallet",
+        {
+          filename: args.filename,
+          password: args.password ?? "",
+        },
+        { retries: getConfig().MONERO_RPC_RETRIES },
+      );
+    },
+    async closeWallet() {
+      await rpc(
+        "close_wallet",
+        {},
+        { retries: getConfig().MONERO_RPC_RETRIES },
+      );
+    },
+    async generateFromKeys(args) {
+      const result = await rpc<{ address: string; info?: string }>(
+        "generate_from_keys",
+        {
+          address: args.address,
+          autosave_current: true,
+          filename: args.filename,
+          password: args.password ?? "",
+          restore_height: args.restoreHeight,
+          ...(args.spendKey ? { spendkey: args.spendKey } : {}),
+          viewkey: args.viewKey,
+        },
+        { retries: getConfig().MONERO_RPC_RETRIES },
+      );
+      return { address: result.address, info: result.info };
+    },
   };
 }
 
@@ -256,6 +289,14 @@ export function createMockWalletClient(): WalletClient {
     },
     async getHeight() {
       return { height: 0 };
+    },
+    async openWallet() {},
+    async closeWallet() {},
+    async generateFromKeys(args) {
+      return {
+        address: args.address,
+        info: "Mock view-only wallet generated",
+      };
     },
   };
 }

@@ -18,7 +18,13 @@ export default defineSchema({
   stores: defineTable({
     developerId: v.string(),
     name: v.string(),
-    withdrawAddress: v.string(),
+    paymentMode: v.optional(v.string()),
+    withdrawAddress: v.optional(v.string()),
+    merchantPrimaryAddress: v.optional(v.string()),
+    encryptedPrivateViewKey: v.optional(v.string()),
+    encryptionKeyVersion: v.optional(v.string()),
+    restoreHeight: v.optional(v.number()),
+    viewOnlyWalletReference: v.optional(v.string()),
     webhookUrl: v.optional(v.string()),
     successCallbackUrl: v.optional(v.string()),
     cancelCallbackUrl: v.optional(v.string()),
@@ -32,6 +38,9 @@ export default defineSchema({
   checkouts: defineTable({
     storeId: v.string(),
     developerId: v.string(),
+    mode: v.optional(v.string()),
+    settlementType: v.optional(v.string()),
+    walletContextId: v.optional(v.string()),
     amountAtomic: v.string(),
     amountUsdCents: v.optional(v.string()),
     pricingCurrency: v.optional(v.string()),
@@ -69,6 +78,8 @@ export default defineSchema({
   paymentEvents: defineTable({
     checkoutId: v.string(),
     txHash: v.string(),
+    subaddressIndexMajor: v.optional(v.number()),
+    subaddressIndexMinor: v.optional(v.number()),
     amountAtomic: v.string(),
     confirmations: v.number(),
     height: v.optional(v.number()),

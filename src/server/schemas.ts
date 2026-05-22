@@ -7,13 +7,31 @@ export const CreateDeveloperSchema = z.object({
   name: z.string().min(1),
 });
 
-export const CreateStoreSchema = z.object({
+const BaseStoreSchema = z.object({
   cancelCallbackUrl: url.optional(),
   name: z.string().min(1),
   successCallbackUrl: url.optional(),
-  withdrawAddress: z.string().min(20),
   webhookUrl: url.optional(),
 });
+
+export const CreateStoreSchema = z.preprocess(
+  (value) =>
+    value && typeof value === "object" && !("paymentMode" in value)
+      ? { ...value, paymentMode: "hosted" }
+      : value,
+  z.discriminatedUnion("paymentMode", [
+    BaseStoreSchema.extend({
+      paymentMode: z.literal("hosted"),
+      withdrawAddress: z.string().min(20),
+    }),
+    BaseStoreSchema.extend({
+      merchantPrimaryAddress: z.string().min(20),
+      paymentMode: z.literal("view_only"),
+      privateViewKey: z.string().min(20),
+      restoreHeight: z.number().int().nonnegative(),
+    }),
+  ]),
+);
 
 export const UpdateStoreSchema = z
   .object({

@@ -20,7 +20,9 @@ export async function GET(
       amountAtomic: string;
       receivedAtomic: string;
       confirmations: number;
+      mode?: string;
       requiredConfirmations?: number;
+      settlementType?: string;
       status: string;
       txHash?: string;
       subaddress: string;
@@ -39,13 +41,23 @@ export async function GET(
       checkoutId: checkout.id,
       confirmations: checkout.confirmations,
       currency: "XMR",
+      mode: checkout.mode ?? "hosted",
       receivedAtomic: checkout.receivedAtomic,
       requiredConfirmations:
         checkout.requiredConfirmations ?? getConfig().REQUIRED_CONFIRMATIONS,
-      status: checkout.status,
+      settlementType: checkout.settlementType ?? "platform_payout",
+      status: normalizeCheckoutStatus(checkout.status),
       txHash: checkout.txHash,
+      txHashes: checkout.txHash ? [checkout.txHash] : [],
     });
   } catch (error) {
     return handleApiError(error);
   }
+}
+
+function normalizeCheckoutStatus(status: string) {
+  if (status === "paid_out") {
+    return "settled";
+  }
+  return status;
 }

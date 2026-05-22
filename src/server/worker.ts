@@ -6,11 +6,15 @@ import {
   calculatePayoutAmount,
   isAtLeastAtomicWithTolerance,
 } from "./money";
-import { createWalletClient } from "./wallet-rpc";
+import type { PaymentMode, SettlementType } from "./types";
+import { createWalletManager } from "./wallet-manager";
 import { deliverWebhook } from "./webhooks";
 
 type Checkout = {
   id: string;
+  mode?: PaymentMode;
+  settlementType?: SettlementType;
+  walletContextId?: string;
   subaddress: string;
   storeId: string;
   developerId: string;
@@ -28,7 +32,12 @@ type Checkout = {
 
 type Store = {
   id: string;
-  withdrawAddress: string;
+  paymentMode?: PaymentMode;
+  withdrawAddress?: string;
+  encryptedPrivateViewKey?: string;
+  merchantPrimaryAddress?: string;
+  restoreHeight?: number;
+  viewOnlyWalletReference?: string;
   webhookUrl?: string;
   webhookSecret: string;
 };
@@ -64,7 +73,7 @@ type WebhookAttempt = {
   url: string;
 };
 
-const wallet = createWalletClient();
+const walletManager = createWalletManager();
 let lastPriceRefreshAttemptAt = 0;
 
 function logWorker(message: string, fields?: Record<string, unknown>) {
@@ -136,9 +145,11 @@ async function refreshPriceIfDue() {
   }
 }
 
-async function deliverPaymentVerifiedWebhook(args: {
+async function deliverPaymentWebhook(args: {
   checkout: Checkout;
   confirmations: number;
+  event: string;
+  payoutTxHash?: string;
   receivedAtomic: string;
   store: Store;
   txHash?: string;
@@ -147,7 +158,7 @@ async function deliverPaymentVerifiedWebhook(args: {
     convex.refs.getWebhookAttemptForCheckoutEvent,
     {
       checkoutId: args.checkout.id,
-      event: "payment.verified",
+      event: args.event,
     },
   );
 
@@ -157,20 +168,29 @@ async function deliverPaymentVerifiedWebhook(args: {
 
   await deliverWebhook({
     checkoutId: args.checkout.id,
-    event: "payment.verified",
+    event: args.event,
     payload: {
       amountAtomic: args.checkout.amountAtomic,
       checkoutId: args.checkout.id,
       confirmations: args.confirmations,
       currency: "XMR",
-      event: "payment.verified",
+      event: args.event,
       metadata: args.checkout.metadata ?? {},
+      mode: args.checkout.mode ?? "hosted",
+      payoutTxHash: args.payoutTxHash,
       receivedAtomic: args.receivedAtomic,
       requiredConfirmations:
         args.checkout.requiredConfirmations ??
         getConfig().REQUIRED_CONFIRMATIONS,
+      settlementType:
+        args.checkout.settlementType ??
+        ((args.checkout.mode ?? "hosted") === "view_only"
+          ? "direct_to_wallet"
+          : "platform_payout"),
       storeId: args.checkout.storeId,
       txHash: args.txHash,
+      txHashes: args.txHash ? [args.txHash] : [],
+      timestamp: new Date().toISOString(),
     },
     secret: args.store.webhookSecret,
     storeId: args.checkout.storeId,
@@ -183,6 +203,20 @@ async function createPayoutForCheckout(args: {
   now: number;
   store: Store;
 }) {
+  if ((args.checkout.mode ?? "hosted") === "view_only") {
+    return;
+  }
+  if (!args.store.withdrawAddress) {
+    await convex.mutation(convex.refs.updateCheckoutPaymentState, {
+      checkoutId: args.checkout.id,
+      confirmations: args.checkout.confirmations,
+      now: args.now,
+      receivedAtomic: args.checkout.receivedAtomic,
+      status: "manual_review",
+      txHash: args.checkout.txHash,
+    });
+    return;
+  }
   const config = getConfig();
   const payoutBreakdown = calculatePayoutAmount({
     amountAtomic: args.checkout.amountAtomic,
@@ -202,70 +236,161 @@ async function createPayoutForCheckout(args: {
   });
 }
 
+async function settleViewOnlyCheckout(args: {
+  checkout: Checkout;
+  confirmations: number;
+  now: number;
+  receivedAtomic: string;
+  store: Store;
+  txHash?: string;
+}) {
+  await convex.mutation(convex.refs.updateCheckoutPaymentState, {
+    checkoutId: args.checkout.id,
+    confirmations: args.confirmations,
+    now: args.now,
+    receivedAtomic: args.receivedAtomic,
+    status: "settled",
+    txHash: args.txHash,
+  });
+  await deliverPaymentWebhook({
+    checkout: args.checkout,
+    confirmations: args.confirmations,
+    event: "payment.confirmed",
+    receivedAtomic: args.receivedAtomic,
+    store: args.store,
+    txHash: args.txHash,
+  });
+  await deliverPaymentWebhook({
+    checkout: args.checkout,
+    confirmations: args.confirmations,
+    event: "payment.settled",
+    receivedAtomic: args.receivedAtomic,
+    store: args.store,
+    txHash: args.txHash,
+  });
+}
+
 async function scanPayments() {
   const config = getConfig();
   const now = Date.now();
-  const [checkouts, transfers] = await Promise.all([
+  const [checkouts, stores] = await Promise.all([
     convex.query<Checkout[]>(convex.refs.listOpenCheckouts, {}),
-    wallet.getTransfers(),
+    convex.query<Store[]>(convex.refs.listScannableWalletContexts, {}),
   ]);
   logWorker("scan payments loaded", {
     openCheckouts: checkouts.length,
-    walletTransfers: transfers.length,
+    walletContexts: stores.length,
   });
 
-  const checkoutsByIndex = new Map(
-    checkouts.map((checkout) => [
-      `${checkout.subaddressIndexMajor}:${checkout.subaddressIndexMinor}`,
-      checkout,
-    ]),
+  const transfersByCheckout = new Map<
+    string,
+    Awaited<ReturnType<typeof walletManager.scanHostedTransfers>>
+  >();
+  const storesById = new Map(stores.map((store) => [store.id, store]));
+  const hostedCheckouts = checkouts.filter(
+    (checkout) => (checkout.mode ?? "hosted") === "hosted",
   );
-  const checkoutsByAddress = new Map(
-    checkouts.map((checkout) => [checkout.subaddress, checkout]),
+  const viewOnlyCheckouts = checkouts.filter(
+    (checkout) => checkout.mode === "view_only",
   );
-  const transfersByCheckout = new Map<string, typeof transfers>();
 
-  for (const transfer of transfers) {
-    const key = transferKey(transfer);
-    const checkout =
-      (key ? checkoutsByIndex.get(key) : undefined) ??
-      (transfer.address ? checkoutsByAddress.get(transfer.address) : undefined);
-    if (!checkout) {
-      warnWorker("wallet transfer did not match an open checkout", {
-        address: transfer.address,
+  async function scanCheckoutGroup(args: {
+    checkouts: Checkout[];
+    store?: Store;
+    transfers: Awaited<ReturnType<typeof walletManager.scanHostedTransfers>>;
+  }) {
+    const checkoutsByIndex = new Map(
+      args.checkouts.map((checkout) => [
+        `${checkout.subaddressIndexMajor}:${checkout.subaddressIndexMinor}`,
+        checkout,
+      ]),
+    );
+    const checkoutsByAddress = new Map(
+      args.checkouts.map((checkout) => [checkout.subaddress, checkout]),
+    );
+
+    for (const transfer of args.transfers) {
+      const key = transferKey(transfer);
+      const checkout =
+        (key ? checkoutsByIndex.get(key) : undefined) ??
+        (transfer.address
+          ? checkoutsByAddress.get(transfer.address)
+          : undefined);
+      if (!checkout) {
+        warnWorker("wallet transfer did not match an open checkout", {
+          address: transfer.address,
+          amountAtomic: transfer.amountAtomic,
+          confirmations: transfer.confirmations,
+          mode: args.store?.paymentMode ?? "hosted",
+          storeId: args.store?.id,
+          subaddressIndexMajor: transfer.subaddressIndexMajor,
+          subaddressIndexMinor: transfer.subaddressIndexMinor,
+          txHash: transfer.txHash,
+        });
+        continue;
+      }
+
+      logWorker("wallet transfer matched checkout", {
         amountAtomic: transfer.amountAtomic,
+        checkoutId: checkout.id,
         confirmations: transfer.confirmations,
+        matchType:
+          key && checkoutsByIndex.get(key) ? "subaddress_index" : "address",
+        mode: checkout.mode ?? "hosted",
+        requiredConfirmations:
+          checkout.requiredConfirmations ?? config.REQUIRED_CONFIRMATIONS,
+        txHash: transfer.txHash,
+      });
+
+      const list = transfersByCheckout.get(checkout.id) ?? [];
+      list.push(transfer);
+      transfersByCheckout.set(checkout.id, list);
+
+      await convex.mutation(convex.refs.recordPaymentObservation, {
+        amountAtomic: transfer.amountAtomic,
+        checkoutId: checkout.id,
+        confirmations: transfer.confirmations,
+        height: transfer.height,
+        now,
+        requiredConfirmations:
+          checkout.requiredConfirmations ?? config.REQUIRED_CONFIRMATIONS,
         subaddressIndexMajor: transfer.subaddressIndexMajor,
         subaddressIndexMinor: transfer.subaddressIndexMinor,
         txHash: transfer.txHash,
       });
+    }
+  }
+
+  if (hostedCheckouts.length > 0) {
+    const hostedTransfers = await walletManager.scanHostedTransfers();
+    await scanCheckoutGroup({
+      checkouts: hostedCheckouts,
+      transfers: hostedTransfers,
+    });
+  }
+
+  const viewOnlyStoreIds = new Set(
+    viewOnlyCheckouts.map((checkout) => checkout.storeId),
+  );
+  for (const storeId of viewOnlyStoreIds) {
+    const store = storesById.get(storeId);
+    if (!store) {
       continue;
     }
-
-    logWorker("wallet transfer matched checkout", {
-      amountAtomic: transfer.amountAtomic,
-      checkoutId: checkout.id,
-      confirmations: transfer.confirmations,
-      matchType:
-        key && checkoutsByIndex.get(key) ? "subaddress_index" : "address",
-      requiredConfirmations:
-        checkout.requiredConfirmations ?? config.REQUIRED_CONFIRMATIONS,
-      txHash: transfer.txHash,
+    const storeCheckouts = viewOnlyCheckouts.filter(
+      (checkout) => checkout.storeId === storeId,
+    );
+    const transfers = await walletManager.scanIncomingTransfers({
+      encryptedPrivateViewKey: store.encryptedPrivateViewKey,
+      id: store.id,
+      mode: "view_only",
+      restoreHeight: store.restoreHeight,
+      viewOnlyWalletReference: store.viewOnlyWalletReference,
     });
-
-    const list = transfersByCheckout.get(checkout.id) ?? [];
-    list.push(transfer);
-    transfersByCheckout.set(checkout.id, list);
-
-    await convex.mutation(convex.refs.recordPaymentObservation, {
-      amountAtomic: transfer.amountAtomic,
-      checkoutId: checkout.id,
-      confirmations: transfer.confirmations,
-      height: transfer.height,
-      now,
-      requiredConfirmations:
-        checkout.requiredConfirmations ?? config.REQUIRED_CONFIRMATIONS,
-      txHash: transfer.txHash,
+    await scanCheckoutGroup({
+      checkouts: storeCheckouts,
+      store,
+      transfers,
     });
   }
 
@@ -359,15 +484,26 @@ async function scanPayments() {
         receivedAtomic,
         requiredConfirmations,
       });
-      await deliverPaymentVerifiedWebhook({
-        checkout,
-        confirmations,
-        receivedAtomic,
-        store,
-        txHash,
-      });
-
-      await createPayoutForCheckout({ checkout, now, store });
+      if ((checkout.mode ?? "hosted") === "view_only") {
+        await settleViewOnlyCheckout({
+          checkout,
+          confirmations,
+          now,
+          receivedAtomic,
+          store,
+          txHash,
+        });
+      } else {
+        await deliverPaymentWebhook({
+          checkout,
+          confirmations,
+          event: "payment.confirmed",
+          receivedAtomic,
+          store,
+          txHash,
+        });
+        await createPayoutForCheckout({ checkout, now, store });
+      }
     }
   }
 
@@ -417,15 +553,26 @@ async function scanPayments() {
       status: "confirmed",
     });
 
-    await deliverPaymentVerifiedWebhook({
-      checkout,
-      confirmations: checkout.confirmations,
-      receivedAtomic: checkout.receivedAtomic,
-      store,
-      txHash: checkout.txHash,
-    });
-
-    await createPayoutForCheckout({ checkout, now, store });
+    if ((checkout.mode ?? "hosted") === "view_only") {
+      await settleViewOnlyCheckout({
+        checkout,
+        confirmations: checkout.confirmations,
+        now,
+        receivedAtomic: checkout.receivedAtomic,
+        store,
+        txHash: checkout.txHash,
+      });
+    } else {
+      await deliverPaymentWebhook({
+        checkout,
+        confirmations: checkout.confirmations,
+        event: "payment.confirmed",
+        receivedAtomic: checkout.receivedAtomic,
+        store,
+        txHash: checkout.txHash,
+      });
+      await createPayoutForCheckout({ checkout, now, store });
+    }
   }
 
   // Recovery: create payouts for already-confirmed checkouts that don't have one yet
@@ -452,15 +599,26 @@ async function scanPayments() {
       continue;
     }
 
-    await deliverPaymentVerifiedWebhook({
-      checkout,
-      confirmations: checkout.confirmations,
-      receivedAtomic: checkout.amountAtomic,
-      store,
-      txHash: undefined,
-    });
-
-    await createPayoutForCheckout({ checkout, now, store });
+    if ((checkout.mode ?? "hosted") === "view_only") {
+      await settleViewOnlyCheckout({
+        checkout,
+        confirmations: checkout.confirmations,
+        now,
+        receivedAtomic: checkout.receivedAtomic,
+        store,
+        txHash: checkout.txHash,
+      });
+    } else {
+      await deliverPaymentWebhook({
+        checkout,
+        confirmations: checkout.confirmations,
+        event: "payment.confirmed",
+        receivedAtomic: checkout.receivedAtomic,
+        store,
+        txHash: checkout.txHash,
+      });
+      await createPayoutForCheckout({ checkout, now, store });
+    }
   }
 }
 
@@ -476,6 +634,9 @@ async function collectEligiblePayouts() {
   });
 
   for (const { checkout, existingPayout, store } of candidates) {
+    if ((checkout.mode ?? "hosted") === "view_only") {
+      continue;
+    }
     const requiredConfirmations =
       checkout.requiredConfirmations ?? config.REQUIRED_CONFIRMATIONS;
     const isEligible =
@@ -513,6 +674,7 @@ async function collectEligiblePayouts() {
     if (existingPayout) {
       if (
         checkout.status !== "payout_pending" &&
+        checkout.status !== "settled" &&
         checkout.status !== "paid_out"
       ) {
         await convex.mutation(convex.refs.updateCheckoutPaymentState, {
@@ -521,7 +683,7 @@ async function collectEligiblePayouts() {
           now,
           receivedAtomic: checkout.receivedAtomic,
           status:
-            existingPayout.status === "sent" ? "paid_out" : "payout_pending",
+            existingPayout.status === "sent" ? "settled" : "payout_pending",
           txHash: checkout.txHash,
         });
         logWorker("repaired checkout status from existing payout", {
@@ -544,9 +706,10 @@ async function collectEligiblePayouts() {
       });
     }
 
-    await deliverPaymentVerifiedWebhook({
+    await deliverPaymentWebhook({
       checkout,
       confirmations: checkout.confirmations,
+      event: "payment.confirmed",
       receivedAtomic: checkout.receivedAtomic,
       store,
       txHash: checkout.txHash,
@@ -686,7 +849,7 @@ async function processPayouts() {
         payoutId: payout.id,
         withdrawAddress: payout.withdrawAddress,
       });
-      const result = await wallet.transfer({
+      const result = await walletManager.sendPayout({
         address: payout.withdrawAddress,
         amountAtomic: netPayoutAtomic,
       });
@@ -705,20 +868,31 @@ async function processPayouts() {
 
       await deliverWebhook({
         checkoutId: payout.checkoutId,
-        event: "payment.confirmed",
+        event: "payment.settled",
         payload: {
           amountAtomic: checkoutWithStore.checkout.amountAtomic,
           checkoutId: payout.checkoutId,
           confirmations: checkoutWithStore.checkout.confirmations,
           currency: "XMR",
-          event: "payment.confirmed",
+          event: "payment.settled",
           metadata: checkoutWithStore.checkout.metadata ?? {},
+          mode: checkoutWithStore.checkout.mode ?? "hosted",
           payoutAmountAtomic: netPayoutAtomic,
           payoutId: payout.id,
           payoutStatus: "sent",
           payoutTxHash: result.txHash,
+          receivedAtomic: checkoutWithStore.checkout.receivedAtomic,
+          requiredConfirmations:
+            checkoutWithStore.checkout.requiredConfirmations ??
+            getConfig().REQUIRED_CONFIRMATIONS,
+          settlementType:
+            checkoutWithStore.checkout.settlementType ?? "platform_payout",
           storeId: payout.storeId,
           txHash: checkoutWithStore.checkout.txHash,
+          txHashes: checkoutWithStore.checkout.txHash
+            ? [checkoutWithStore.checkout.txHash]
+            : [],
+          timestamp: new Date().toISOString(),
         },
         secret: checkoutWithStore.store.webhookSecret,
         storeId: payout.storeId,

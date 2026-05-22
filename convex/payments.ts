@@ -14,10 +14,12 @@ const checkoutStatuses = [
   "seen",
   "confirming",
   "confirmed",
+  "settled",
   "payout_pending",
   "paid_out",
   "expired",
   "failed",
+  "manual_review",
 ];
 
 const payoutStatuses = [
@@ -218,7 +220,9 @@ export const getDashboardForCurrentUser = query({
 
     const confirmedVolumeAtomic = checkouts
       .filter((checkout) =>
-        ["confirmed", "payout_pending", "paid_out"].includes(checkout.status),
+        ["confirmed", "payout_pending", "paid_out", "settled"].includes(
+          checkout.status,
+        ),
       )
       .reduce((sum, checkout) => sum + BigInt(checkout.receivedAtomic), 0n);
     const pendingPayoutAtomic = payouts
@@ -322,25 +326,38 @@ export const createStore = mutation({
   args: {
     developerId: v.string(),
     name: v.string(),
-    withdrawAddress: v.string(),
+    paymentMode: v.optional(v.string()),
+    withdrawAddress: v.optional(v.string()),
+    merchantPrimaryAddress: v.optional(v.string()),
+    encryptedPrivateViewKey: v.optional(v.string()),
+    encryptionKeyVersion: v.optional(v.string()),
+    restoreHeight: v.optional(v.number()),
+    viewOnlyWalletReference: v.optional(v.string()),
     webhookUrl: v.optional(v.string()),
     successCallbackUrl: v.optional(v.string()),
     cancelCallbackUrl: v.optional(v.string()),
     webhookSecret: v.string(),
     now: v.number(),
+    status: v.optional(v.string()),
   },
   returns: v.object({ storeId: v.string() }),
   handler: async (ctx, args) => {
     const storeId = await ctx.db.insert("stores", {
       developerId: args.developerId,
       name: args.name,
+      paymentMode: args.paymentMode ?? "hosted",
       withdrawAddress: args.withdrawAddress,
+      merchantPrimaryAddress: args.merchantPrimaryAddress,
+      encryptedPrivateViewKey: args.encryptedPrivateViewKey,
+      encryptionKeyVersion: args.encryptionKeyVersion,
+      restoreHeight: args.restoreHeight,
+      viewOnlyWalletReference: args.viewOnlyWalletReference,
       webhookUrl: args.webhookUrl,
       successCallbackUrl: args.successCallbackUrl,
       cancelCallbackUrl: args.cancelCallbackUrl,
       webhookSecret: args.webhookSecret,
       createdAt: args.now,
-      status: "active",
+      status: args.status ?? "active",
     });
 
     return { storeId };
@@ -350,12 +367,19 @@ export const createStore = mutation({
 export const createStoreForCurrentUser = mutation({
   args: {
     name: v.string(),
-    withdrawAddress: v.string(),
+    paymentMode: v.optional(v.string()),
+    withdrawAddress: v.optional(v.string()),
+    merchantPrimaryAddress: v.optional(v.string()),
+    encryptedPrivateViewKey: v.optional(v.string()),
+    encryptionKeyVersion: v.optional(v.string()),
+    restoreHeight: v.optional(v.number()),
+    viewOnlyWalletReference: v.optional(v.string()),
     webhookUrl: v.optional(v.string()),
     successCallbackUrl: v.optional(v.string()),
     cancelCallbackUrl: v.optional(v.string()),
     webhookSecret: v.string(),
     now: v.number(),
+    status: v.optional(v.string()),
   },
   returns: v.object({ storeId: v.string() }),
   handler: async (ctx, args) => {
@@ -363,13 +387,19 @@ export const createStoreForCurrentUser = mutation({
     const storeId = await ctx.db.insert("stores", {
       developerId: developer._id,
       name: args.name,
+      paymentMode: args.paymentMode ?? "hosted",
       withdrawAddress: args.withdrawAddress,
+      merchantPrimaryAddress: args.merchantPrimaryAddress,
+      encryptedPrivateViewKey: args.encryptedPrivateViewKey,
+      encryptionKeyVersion: args.encryptionKeyVersion,
+      restoreHeight: args.restoreHeight,
+      viewOnlyWalletReference: args.viewOnlyWalletReference,
       webhookUrl: args.webhookUrl,
       successCallbackUrl: args.successCallbackUrl,
       cancelCallbackUrl: args.cancelCallbackUrl,
       webhookSecret: args.webhookSecret,
       createdAt: args.now,
-      status: "active",
+      status: args.status ?? "active",
     });
 
     return { storeId };
@@ -409,6 +439,27 @@ export const updateStore = mutation({
         : {}),
     });
 
+    return { storeId: args.storeId };
+  },
+});
+
+export const updateStoreWalletReference = mutation({
+  args: {
+    developerId: v.string(),
+    storeId: v.string(),
+    status: v.optional(v.string()),
+    viewOnlyWalletReference: v.string(),
+  },
+  returns: v.object({ storeId: v.string() }),
+  handler: async (ctx, args) => {
+    const store = await ctx.db.get(args.storeId as never);
+    if (!store || store.developerId !== args.developerId) {
+      throw new Error("Store not found");
+    }
+    await ctx.db.patch(args.storeId as never, {
+      status: args.status ?? store.status,
+      viewOnlyWalletReference: args.viewOnlyWalletReference,
+    });
     return { storeId: args.storeId };
   },
 });
@@ -458,7 +509,13 @@ export const getStoreForDeveloper = query({
       id: v.string(),
       developerId: v.string(),
       name: v.string(),
-      withdrawAddress: v.string(),
+      paymentMode: v.optional(v.string()),
+      withdrawAddress: v.optional(v.string()),
+      merchantPrimaryAddress: v.optional(v.string()),
+      encryptedPrivateViewKey: v.optional(v.string()),
+      encryptionKeyVersion: v.optional(v.string()),
+      restoreHeight: v.optional(v.number()),
+      viewOnlyWalletReference: v.optional(v.string()),
       webhookUrl: v.optional(v.string()),
       successCallbackUrl: v.optional(v.string()),
       cancelCallbackUrl: v.optional(v.string()),
@@ -476,7 +533,13 @@ export const getStoreForDeveloper = query({
       id: store._id,
       developerId: store.developerId,
       name: store.name,
+      paymentMode: store.paymentMode ?? "hosted",
       withdrawAddress: store.withdrawAddress,
+      merchantPrimaryAddress: store.merchantPrimaryAddress,
+      encryptedPrivateViewKey: store.encryptedPrivateViewKey,
+      encryptionKeyVersion: store.encryptionKeyVersion,
+      restoreHeight: store.restoreHeight,
+      viewOnlyWalletReference: store.viewOnlyWalletReference,
       webhookUrl: store.webhookUrl,
       successCallbackUrl: store.successCallbackUrl,
       cancelCallbackUrl: store.cancelCallbackUrl,
@@ -490,6 +553,9 @@ export const createCheckout = mutation({
   args: {
     storeId: v.string(),
     developerId: v.string(),
+    mode: v.optional(v.string()),
+    settlementType: v.optional(v.string()),
+    walletContextId: v.optional(v.string()),
     amountAtomic: v.string(),
     amountUsdCents: v.optional(v.string()),
     metadata: v.optional(v.any()),
@@ -542,6 +608,9 @@ export const createCheckout = mutation({
     const checkoutId = await ctx.db.insert("checkouts", {
       storeId: args.storeId,
       developerId: args.developerId,
+      mode: args.mode ?? "hosted",
+      settlementType: args.settlementType ?? "platform_payout",
+      walletContextId: args.walletContextId,
       amountAtomic: args.amountAtomic,
       amountUsdCents: args.amountUsdCents,
       pricingCurrency: args.pricingCurrency,
@@ -662,9 +731,11 @@ export const getHostedCheckout = query({
       currency: checkout.currency,
       expiresAt: checkout.expiresAt,
       metadata: checkout.metadata,
+      mode: checkout.mode ?? "hosted",
       pricingCurrency: checkout.pricingCurrency,
       receivedAtomic: checkout.receivedAtomic,
       requiredConfirmations: checkout.requiredConfirmations,
+      settlementType: checkout.settlementType ?? "platform_payout",
       status: checkout.status,
       storeId: checkout.storeId,
       storeName: store?.name,
@@ -730,10 +801,40 @@ export const listOpenCheckouts = query({
   },
 });
 
+export const listScannableWalletContexts = query({
+  args: {},
+  returns: v.array(v.any()),
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("checkouts").collect();
+    const active = rows.filter((checkout) =>
+      [
+        "waiting_for_payment",
+        "seen",
+        "confirming",
+        "confirmed",
+        "payout_pending",
+      ].includes(checkout.status),
+    );
+    const stores = new Map<string, unknown>();
+
+    for (const checkout of active) {
+      const store = await ctx.db.get(checkout.storeId as never);
+      if (!store || store.status !== "active") {
+        continue;
+      }
+      stores.set(store._id, { id: store._id, ...store });
+    }
+
+    return [...stores.values()];
+  },
+});
+
 export const recordPaymentObservation = mutation({
   args: {
     checkoutId: v.string(),
     txHash: v.string(),
+    subaddressIndexMajor: v.optional(v.number()),
+    subaddressIndexMinor: v.optional(v.number()),
     amountAtomic: v.string(),
     confirmations: v.number(),
     requiredConfirmations: v.number(),
@@ -747,7 +848,12 @@ export const recordPaymentObservation = mutation({
         .query("paymentEvents")
         .withIndex("by_checkout", (q) => q.eq("checkoutId", args.checkoutId))
         .collect()
-    ).find((event) => event.txHash === args.txHash);
+    ).find(
+      (event) =>
+        event.txHash === args.txHash &&
+        event.subaddressIndexMajor === args.subaddressIndexMajor &&
+        event.subaddressIndexMinor === args.subaddressIndexMinor,
+    );
 
     if (existing) {
       await ctx.db.patch(existing._id, {
@@ -765,6 +871,8 @@ export const recordPaymentObservation = mutation({
     await ctx.db.insert("paymentEvents", {
       checkoutId: args.checkoutId,
       txHash: args.txHash,
+      subaddressIndexMajor: args.subaddressIndexMajor,
+      subaddressIndexMinor: args.subaddressIndexMinor,
       amountAtomic: args.amountAtomic,
       confirmations: args.confirmations,
       height: args.height,
@@ -966,7 +1074,7 @@ export const listPayoutCollectionCandidates = query({
     const candidates = [];
 
     for (const checkout of checkouts) {
-      if (checkout.status === "paid_out") {
+      if (checkout.status === "paid_out" || checkout.status === "settled") {
         continue;
       }
 
@@ -1038,7 +1146,7 @@ export const updatePayoutStatus = mutation({
       const payout = await ctx.db.get(args.payoutId as never);
       if (payout) {
         await ctx.db.patch(payout.checkoutId as never, {
-          status: "paid_out",
+          status: "settled",
           updatedAt: args.now,
         });
       }

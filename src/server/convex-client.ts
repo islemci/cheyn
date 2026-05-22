@@ -24,6 +24,9 @@ const refs = {
     "payments.js:createStoreForCurrentUser",
   ),
   updateStore: makeFunctionReference<"mutation">("payments.js:updateStore"),
+  updateStoreWalletReference: makeFunctionReference<"mutation">(
+    "payments.js:updateStoreWalletReference",
+  ),
   updateStoreForCurrentUser: makeFunctionReference<"mutation">(
     "payments.js:updateStoreForCurrentUser",
   ),
@@ -53,6 +56,9 @@ const refs = {
   ),
   listOpenCheckouts: makeFunctionReference<"query">(
     "payments.js:listOpenCheckouts",
+  ),
+  listScannableWalletContexts: makeFunctionReference<"query">(
+    "payments.js:listScannableWalletContexts",
   ),
   recordPaymentObservation: makeFunctionReference<"mutation">(
     "payments.js:recordPaymentObservation",

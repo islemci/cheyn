@@ -37,6 +37,8 @@ const EnvSchema = z.object({
   MONERO_RPC_URL: z.string().url().optional(),
   MONERO_RPC_USER: z.string().optional(),
   MONERO_WALLET_MODE: z.enum(["real", "mock"]).default("mock"),
+  WALLET_BASE_DIR: z.string().default("monero/wallets"),
+  WALLET_HOSTED_NAME: z.string().default("hosted/wallet"),
   NEXT_PUBLIC_CONVEX_URL: z.string().url().optional(),
   MAX_TOTAL_FEE_BPS: optionalNumber(500),
   MAX_PAYOUT_ATOMIC: z.string().optional(),
@@ -53,6 +55,9 @@ const EnvSchema = z.object({
   PAYOUT_MAX_FAILURES: optionalNumber(3),
   WEBHOOK_RETRY_DELAY_MS: optionalNumber(60 * 1000),
   WEBHOOK_MAX_FAILURES: optionalNumber(5),
+  VIEW_KEY_ENCRYPTION_KEY: z.string().optional(),
+  VIEW_KEY_ENCRYPTION_KEY_VERSION: z.string().default("v1"),
+  VIEW_ONLY_DONATION_ADDRESS: z.string().optional(),
   REQUIRED_CONFIRMATIONS: optionalNumber(10),
   WORKER_POLL_INTERVAL_MS: optionalNumber(30_000),
 });

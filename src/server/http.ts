@@ -4,10 +4,18 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
+
+type ApiErrorContext = {
+  metadata?: Record<string, unknown>;
+  requestId?: string;
+  route?: string;
+  stage?: string;
+};
 
 export function json(data: unknown, init?: ResponseInit) {
   return Response.json(data, init);
@@ -28,11 +36,50 @@ export async function parseJson<T>(request: Request, schema: ZodType<T>) {
   }
 }
 
-export function handleApiError(error: unknown) {
+function logApiError(error: unknown, context?: ApiErrorContext) {
+  const cause =
+    error instanceof Error && error.cause instanceof Error
+      ? {
+          causeMessage: error.cause.message,
+          causeName: error.cause.name,
+          causeStack: error.cause.stack,
+        }
+      : undefined;
+
+  console.error("[api-error]", {
+    ...context,
+    error:
+      error instanceof Error
+        ? {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
+            ...cause,
+          }
+        : error,
+  });
+}
+
+export function handleApiError(error: unknown, context?: ApiErrorContext) {
   if (error instanceof ApiError) {
-    return json({ error: error.message }, { status: error.status });
+    if (error.status >= 500) {
+      logApiError(error, context);
+    }
+    return json(
+      {
+        error: error.message,
+        ...(context?.requestId ? { requestId: context.requestId } : {}),
+      },
+      { status: error.status },
+    );
   }
 
-  console.error(error);
-  return json({ error: "Internal server error" }, { status: 500 });
+  logApiError(error, context);
+  return json(
+    {
+      error: "Internal server error",
+      ...(context?.requestId ? { requestId: context.requestId } : {}),
+    },
+    { status: 500 },
+  );
 }
