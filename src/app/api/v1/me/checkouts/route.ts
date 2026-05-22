@@ -12,7 +12,10 @@ import {
 } from "@/server/money";
 import { rateLimit } from "@/server/rate-limit";
 import { CreateCheckoutSchema } from "@/server/schemas";
-import { createWalletClient } from "@/server/wallet-rpc";
+import {
+  createWalletManager,
+  settlementTypeForMode,
+} from "@/server/wallet-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +52,14 @@ export async function POST(request: Request) {
     }
 
     const store = await convex.query<{
+      encryptedPrivateViewKey?: string;
       id: string;
+      paymentMode?: "hosted" | "view_only";
+      restoreHeight?: number;
       status: string;
       successCallbackUrl?: string;
       cancelCallbackUrl?: string;
+      viewOnlyWalletReference?: string;
     } | null>(convex.refs.getStoreForDeveloper, {
       developerId: developer.id,
       storeId: input.storeId,
@@ -72,8 +79,23 @@ export async function POST(request: Request) {
       storeId: input.storeId,
       successUrl,
     });
-    const wallet = createWalletClient();
-    const subaddress = await wallet.createSubaddress();
+    const walletManager = createWalletManager();
+    const mode = store.paymentMode ?? "hosted";
+    const settlementType = settlementTypeForMode(mode);
+    const walletContext = walletManager.resolveWalletContext({
+      encryptedPrivateViewKey: store.encryptedPrivateViewKey,
+      id: store.id,
+      mode,
+      restoreHeight: store.restoreHeight,
+      viewOnlyWalletReference: store.viewOnlyWalletReference,
+    });
+    const subaddress = await walletManager.createPaymentAddress({
+      encryptedPrivateViewKey: store.encryptedPrivateViewKey,
+      id: store.id,
+      mode,
+      restoreHeight: store.restoreHeight,
+      viewOnlyWalletReference: store.viewOnlyWalletReference,
+    });
     const now = Date.now();
     const requiredConfirmations = getRequiredConfirmationsForAmount(
       amountAtomic,
@@ -89,14 +111,17 @@ export async function POST(request: Request) {
         expiresAt: now + config.CHECKOUT_EXPIRY_MINUTES * 60_000,
         idempotencyKey: input.idempotencyKey,
         metadata: input.metadata,
+        mode,
         now,
         pricingCurrency: amountUsdCents ? "USD" : "XMR",
         requiredConfirmations,
         requestFingerprint,
+        settlementType,
         storeId: input.storeId,
         subaddress: subaddress.address,
         subaddressIndexMajor: subaddress.majorIndex,
         subaddressIndexMinor: subaddress.minorIndex,
+        walletContextId: walletContext.id,
         successUrl,
         xmrUsdPriceFetchedAt: pricing?.fetchedAt,
         xmrUsdPriceDecimal: pricing?.priceUsdDecimal,
@@ -113,8 +138,10 @@ export async function POST(request: Request) {
         checkoutId: result.checkoutId,
         checkoutUrl: `${config.API_BASE_URL}/c/${result.checkoutId}`,
         currency: "XMR",
+        mode,
         pricingCurrency: amountUsdCents ? "USD" : "XMR",
         requiredConfirmations,
+        settlementType,
         status: "waiting_for_payment",
         cancelUrl,
         successUrl,

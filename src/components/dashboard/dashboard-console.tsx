@@ -40,11 +40,16 @@ type DashboardStore = {
   id: string;
   cancelCallbackUrl?: string;
   createdAt: number;
+  merchantPrimaryAddress?: string;
   name: string;
+  paymentMode?: "hosted" | "view_only";
+  restoreHeight?: number;
+  settlementType?: "platform_payout" | "direct_to_wallet";
   status: string;
   successCallbackUrl?: string;
+  viewOnlyWalletReference?: string;
   webhookUrl?: string;
-  withdrawAddress: string;
+  withdrawAddress?: string;
 };
 
 type DashboardCheckout = {
@@ -54,9 +59,11 @@ type DashboardCheckout = {
   confirmations: number;
   createdAt: number;
   expiresAt: number;
+  mode?: "hosted" | "view_only";
   pricingCurrency?: string;
   receivedAtomic: string;
   requiredConfirmations?: number;
+  settlementType?: "platform_payout" | "direct_to_wallet";
   status: string;
   storeId: string;
   subaddress: string;
@@ -167,7 +174,11 @@ const tabs = [
 export type DashboardTabId = (typeof tabs)[number]["id"];
 
 function StatusBadge({ status }: { status: string }) {
-  if (["active", "confirmed", "paid_out", "sent", "success"].includes(status)) {
+  if (
+    ["active", "confirmed", "paid_out", "sent", "settled", "success"].includes(
+      status,
+    )
+  ) {
     return <Badge variant="success">{status}</Badge>;
   }
   if (["failed", "manual_review", "expired"].includes(status)) {
@@ -385,8 +396,20 @@ function OverviewTab({
               <>
                 <InfoRow label="Name" value={primaryStore.name} />
                 <InfoRow
-                  label="Withdraw"
-                  value={truncateMiddle(primaryStore.withdrawAddress)}
+                  label="Mode"
+                  value={formatPaymentMode(primaryStore.paymentMode)}
+                />
+                <InfoRow
+                  label={
+                    primaryStore.paymentMode === "view_only"
+                      ? "Merchant wallet"
+                      : "Withdraw"
+                  }
+                  value={truncateMiddle(
+                    primaryStore.paymentMode === "view_only"
+                      ? primaryStore.merchantPrimaryAddress
+                      : primaryStore.withdrawAddress,
+                  )}
                 />
                 <InfoRow
                   label="Webhook"
@@ -423,6 +446,8 @@ function CheckoutsTab({
     amountAtomic: string;
     checkoutId: string;
     checkoutUrl: string;
+    mode?: string;
+    settlementType?: string;
   } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -454,6 +479,8 @@ function CheckoutsTab({
         checkoutId?: string;
         checkoutUrl?: string;
         error?: string;
+        mode?: string;
+        settlementType?: string;
       };
 
       if (!response.ok || !body.checkoutId || !body.checkoutUrl) {
@@ -467,6 +494,8 @@ function CheckoutsTab({
         amountAtomic: body.amountAtomic ?? "",
         checkoutId: body.checkoutId,
         checkoutUrl: body.checkoutUrl,
+        mode: body.mode,
+        settlementType: body.settlementType,
       });
       setStatus("Checkout link created.");
     } catch (error) {
@@ -509,7 +538,7 @@ function CheckoutsTab({
                 >
                   {stores.map((store) => (
                     <option key={store.id} value={store.id}>
-                      {store.name}
+                      {store.name} · {formatPaymentMode(store.paymentMode)}
                     </option>
                   ))}
                 </select>
@@ -566,6 +595,10 @@ function CheckoutsTab({
             <div className="mt-3 grid gap-3 rounded-md border border-border p-3 text-sm md:grid-cols-[1fr_auto]">
               <div className="min-w-0">
                 <p className="font-medium">Checkout link</p>
+                <p className="mt-1 text-muted-foreground text-xs">
+                  {formatPaymentMode(createdCheckout.mode)} ·{" "}
+                  {formatSettlementType(createdCheckout.settlementType)}
+                </p>
                 <p className="mt-1 truncate font-mono text-muted-foreground">
                   {createdCheckout.checkoutUrl}
                 </p>
@@ -613,6 +646,7 @@ function CheckoutsTab({
                 <thead className="bg-muted text-muted-foreground">
                   <tr>
                     <th className="p-3 font-medium">Checkout</th>
+                    <th className="p-3 font-medium">Mode</th>
                     <th className="p-3 font-medium">Expected</th>
                     <th className="p-3 font-medium">Received</th>
                     <th className="p-3 font-medium">Blocks</th>
@@ -624,6 +658,16 @@ function CheckoutsTab({
                   {checkouts.map((checkout) => (
                     <tr key={checkout.id} className="border-border border-t">
                       <td className="p-3 font-mono">{checkout.id}</td>
+                      <td className="p-3">
+                        <div className="grid gap-1">
+                          <Badge variant="muted">
+                            {formatPaymentMode(checkout.mode)}
+                          </Badge>
+                          <span className="text-muted-foreground text-xs">
+                            {formatSettlementType(checkout.settlementType)}
+                          </span>
+                        </div>
+                      </td>
                       <td className="p-3">
                         {formatCheckoutExpected(checkout)}
                       </td>
@@ -654,9 +698,15 @@ function CheckoutsTab({
 
 function StoresTab({ stores }: { stores: DashboardStore[] }) {
   const [name, setName] = useState("");
+  const [paymentMode, setPaymentMode] = useState<"hosted" | "view_only">(
+    "hosted",
+  );
   const [successCallbackUrl, setSuccessCallbackUrl] = useState("");
   const [cancelCallbackUrl, setCancelCallbackUrl] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
+  const [merchantPrimaryAddress, setMerchantPrimaryAddress] = useState("");
+  const [privateViewKey, setPrivateViewKey] = useState("");
+  const [restoreHeight, setRestoreHeight] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -673,9 +723,17 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
         body: JSON.stringify({
           name,
           cancelCallbackUrl: cancelCallbackUrl || undefined,
+          merchantPrimaryAddress:
+            paymentMode === "view_only" ? merchantPrimaryAddress : undefined,
+          paymentMode,
+          privateViewKey:
+            paymentMode === "view_only" ? privateViewKey : undefined,
+          restoreHeight:
+            paymentMode === "view_only" ? Number(restoreHeight) : undefined,
           successCallbackUrl: successCallbackUrl || undefined,
           webhookUrl: webhookUrl || undefined,
-          withdrawAddress,
+          withdrawAddress:
+            paymentMode === "hosted" ? withdrawAddress : undefined,
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -691,9 +749,13 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
       }
 
       setName("");
+      setPaymentMode("hosted");
       setSuccessCallbackUrl("");
       setCancelCallbackUrl("");
       setWithdrawAddress("");
+      setMerchantPrimaryAddress("");
+      setPrivateViewKey("");
+      setRestoreHeight("");
       setWebhookUrl("");
       setWebhookSecret(body.webhookSecret ?? null);
       setStatus(`Store created: ${body.storeId}`);
@@ -712,11 +774,78 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
         <CardHeader>
           <CardTitle>Create store</CardTitle>
           <CardDescription>
-            Add a withdrawal address and webhook destination for checkouts.
+            Choose managed payouts or direct-to-wallet verification.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={createStore} className="grid gap-3">
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Payment mode</span>
+              <select
+                value={paymentMode}
+                onChange={(event) =>
+                  setPaymentMode(event.target.value as "hosted" | "view_only")
+                }
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="hosted">Hosted · platform payout</option>
+                <option value="view_only">View-only · direct to wallet</option>
+              </select>
+            </label>
+            {paymentMode === "hosted" ? (
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium">Withdrawal address</span>
+                <input
+                  required
+                  value={withdrawAddress}
+                  onChange={(event) => setWithdrawAddress(event.target.value)}
+                  className="h-10 rounded-md border border-input bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="8..."
+                />
+              </label>
+            ) : (
+              <div className="grid gap-3 rounded-md border border-border p-3">
+                <p className="text-muted-foreground text-sm">
+                  Customers pay your wallet directly. We use the private view
+                  key only to verify incoming payments and cannot spend funds.
+                </p>
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium">Merchant primary address</span>
+                  <input
+                    required
+                    value={merchantPrimaryAddress}
+                    onChange={(event) =>
+                      setMerchantPrimaryAddress(event.target.value)
+                    }
+                    className="h-10 rounded-md border border-input bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder="8..."
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium">Private view key</span>
+                  <input
+                    required
+                    value={privateViewKey}
+                    onChange={(event) => setPrivateViewKey(event.target.value)}
+                    className="h-10 rounded-md border border-input bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder="Private view key"
+                    type="password"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium">Restore height</span>
+                  <input
+                    required
+                    value={restoreHeight}
+                    onChange={(event) => setRestoreHeight(event.target.value)}
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    min={0}
+                    placeholder="3000000"
+                    type="number"
+                  />
+                </label>
+              </div>
+            )}
             <label className="grid gap-1 text-sm">
               <span className="font-medium">Store name</span>
               <input
@@ -725,16 +854,6 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
                 onChange={(event) => setName(event.target.value)}
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 placeholder="My SaaS"
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Withdrawal address</span>
-              <input
-                required
-                value={withdrawAddress}
-                onChange={(event) => setWithdrawAddress(event.target.value)}
-                className="h-10 rounded-md border border-input bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                placeholder="8..."
               />
             </label>
             <label className="grid gap-1 text-sm">
@@ -812,7 +931,9 @@ function StoresTab({ stores }: { stores: DashboardStore[] }) {
 
 function StoreEditor({ store }: { store: DashboardStore }) {
   const [name, setName] = useState(store.name);
-  const [withdrawAddress, setWithdrawAddress] = useState(store.withdrawAddress);
+  const [withdrawAddress, setWithdrawAddress] = useState(
+    store.withdrawAddress ?? "",
+  );
   const [webhookUrl, setWebhookUrl] = useState(store.webhookUrl ?? "");
   const [successCallbackUrl, setSuccessCallbackUrl] = useState(
     store.successCallbackUrl ?? "",
@@ -835,7 +956,10 @@ function StoreEditor({ store }: { store: DashboardStore }) {
           name,
           successCallbackUrl: successCallbackUrl || null,
           webhookUrl: webhookUrl || null,
-          withdrawAddress,
+          withdrawAddress:
+            (store.paymentMode ?? "hosted") === "hosted"
+              ? withdrawAddress
+              : undefined,
         }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
@@ -864,7 +988,10 @@ function StoreEditor({ store }: { store: DashboardStore }) {
             {store.id}
           </p>
         </div>
-        <StatusBadge status={store.status} />
+        <div className="flex flex-wrap justify-end gap-2">
+          <Badge variant="muted">{formatPaymentMode(store.paymentMode)}</Badge>
+          <StatusBadge status={store.status} />
+        </div>
       </div>
       <label className="grid gap-1 text-sm">
         <span className="font-medium">Store name</span>
@@ -875,15 +1002,36 @@ function StoreEditor({ store }: { store: DashboardStore }) {
           className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium">Withdrawal address</span>
-        <input
-          required
-          value={withdrawAddress}
-          onChange={(event) => setWithdrawAddress(event.target.value)}
-          className="h-10 rounded-md border border-input bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-      </label>
+      {(store.paymentMode ?? "hosted") === "hosted" ? (
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">Withdrawal address</span>
+          <input
+            required
+            value={withdrawAddress}
+            onChange={(event) => setWithdrawAddress(event.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </label>
+      ) : (
+        <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+          <InfoRow
+            label="Merchant wallet"
+            value={truncateMiddle(store.merchantPrimaryAddress)}
+          />
+          <InfoRow
+            label="Restore height"
+            value={
+              store.restoreHeight === undefined
+                ? "Not configured"
+                : String(store.restoreHeight)
+            }
+          />
+          <InfoRow
+            label="Wallet reference"
+            value={store.viewOnlyWalletReference ?? "Provisioning"}
+          />
+        </div>
+      )}
       <label className="grid gap-1 text-sm">
         <span className="font-medium">Webhook URL</span>
         <input
@@ -1275,6 +1423,16 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatPaymentMode(mode?: string) {
+  return mode === "view_only" ? "View-only" : "Hosted";
+}
+
+function formatSettlementType(settlementType?: string) {
+  return settlementType === "direct_to_wallet"
+    ? "Direct to wallet"
+    : "Platform payout";
+}
+
 function formatAtomic(amountAtomic: string) {
   const amount = BigInt(amountAtomic);
   const whole = amount / 1_000_000_000_000n;
@@ -1302,7 +1460,10 @@ function formatUsdCents(amountUsdCents: string) {
   return `$${dollars.toString()}.${remainder}`;
 }
 
-function truncateMiddle(value: string) {
+function truncateMiddle(value?: string) {
+  if (!value) {
+    return "Not configured";
+  }
   if (value.length <= 22) {
     return value;
   }

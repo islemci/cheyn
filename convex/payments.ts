@@ -275,10 +275,18 @@ export const getDashboardForCurrentUser = query({
         id: store._id,
         createdAt: store.createdAt,
         name: store.name,
+        paymentMode: store.paymentMode ?? "hosted",
         status: store.status,
         webhookUrl: store.webhookUrl,
         successCallbackUrl: store.successCallbackUrl,
         cancelCallbackUrl: store.cancelCallbackUrl,
+        merchantPrimaryAddress: store.merchantPrimaryAddress,
+        restoreHeight: store.restoreHeight,
+        settlementType:
+          (store.paymentMode ?? "hosted") === "view_only"
+            ? "direct_to_wallet"
+            : "platform_payout",
+        viewOnlyWalletReference: store.viewOnlyWalletReference,
         withdrawAddress: store.withdrawAddress,
       })),
       webhookAttempts: webhookAttempts

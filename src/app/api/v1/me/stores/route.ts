@@ -7,18 +7,28 @@ import { convex } from "@/server/convex-client";
 import { handleApiError, parseJson } from "@/server/http";
 import { CreateStoreSchema } from "@/server/schemas";
 import { encryptPrivateViewKey } from "@/server/security";
+import { createWalletManager } from "@/server/wallet-manager";
 
 export const dynamic = "force-dynamic";
+
+type CurrentDeveloper = {
+  id: string;
+};
 
 export async function POST(request: Request) {
   try {
     const input = await parseJson(request, CreateStoreSchema);
     const webhookSecret = createWebhookSecret();
     const config = getConfig();
-    const result = await fetchAuthMutation(
-      convex.refs.createStoreForCurrentUser,
+    const developer = (await fetchAuthMutation(
+      convex.refs.getOrClaimDeveloperForCurrentUser,
+      {},
+    )) as CurrentDeveloper;
+    const result = await convex.mutation<{ storeId: string }>(
+      convex.refs.createStore,
       {
         cancelCallbackUrl: input.cancelCallbackUrl,
+        developerId: developer.id,
         encryptedPrivateViewKey:
           input.paymentMode === "view_only"
             ? encryptPrivateViewKey(input.privateViewKey)
@@ -45,8 +55,34 @@ export async function POST(request: Request) {
       },
     );
 
+    let viewOnlyWalletReference: string | undefined;
+    if (input.paymentMode === "view_only") {
+      viewOnlyWalletReference =
+        await createWalletManager().createViewOnlyWallet({
+          merchantPrimaryAddress: input.merchantPrimaryAddress,
+          privateViewKey: input.privateViewKey,
+          restoreHeight: input.restoreHeight,
+          storeId: result.storeId,
+        });
+      await convex.mutation(convex.refs.updateStoreWalletReference, {
+        developerId: developer.id,
+        status: "active",
+        storeId: result.storeId,
+        viewOnlyWalletReference,
+      });
+    }
+
     return NextResponse.json(
-      { storeId: result.storeId, webhookSecret },
+      {
+        paymentMode: input.paymentMode,
+        settlementType:
+          input.paymentMode === "view_only"
+            ? "direct_to_wallet"
+            : "platform_payout",
+        storeId: result.storeId,
+        viewOnlyWalletReference,
+        webhookSecret,
+      },
       { status: 201 },
     );
   } catch (error) {
