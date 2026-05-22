@@ -31,32 +31,42 @@ export function settlementTypeForMode(mode: PaymentMode): SettlementType {
 }
 
 function hostedWalletReference() {
-  return walletReference(getConfig().WALLET_HOSTED_NAME);
+  return getConfig().WALLET_HOSTED_NAME;
 }
 
 function viewOnlyWalletReference(storeId: string) {
-  return walletReference(`view-only/store_${storeId}/wallet`);
-}
-
-function walletReference(relativePath: string) {
-  const baseDir = getConfig().WALLET_BASE_DIR.replace(/\/+$/, "");
-  const normalizedPath = relativePath.replace(/^\/+/, "");
-  return `${baseDir}/${normalizedPath}`;
+  return `view-only/store_${storeId}/wallet`;
 }
 
 export class HostedWalletBackend {
   constructor(private readonly wallet: WalletClient = createWalletClient()) {}
 
   async createPaymentAddress() {
-    return this.wallet.createSubaddress();
+    return enqueueWalletOperation(async () => {
+      await this.openHostedWallet();
+      return this.wallet.createSubaddress();
+    });
   }
 
   async scanIncomingTransfers() {
-    return this.wallet.getTransfers();
+    return enqueueWalletOperation(async () => {
+      await this.openHostedWallet();
+      return this.wallet.getTransfers();
+    });
   }
 
   async sendPayout(args: { address: string; amountAtomic: string }) {
-    return this.wallet.transfer(args);
+    return enqueueWalletOperation(async () => {
+      await this.openHostedWallet();
+      return this.wallet.transfer(args);
+    });
+  }
+
+  private async openHostedWallet() {
+    await this.wallet.openWallet({
+      filename: hostedWalletReference(),
+      password: getConfig().WALLET_HOSTED_PASSWORD,
+    });
   }
 }
 

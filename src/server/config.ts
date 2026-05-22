@@ -39,6 +39,7 @@ const EnvSchema = z.object({
   MONERO_WALLET_MODE: z.enum(["real", "mock"]).default("mock"),
   WALLET_BASE_DIR: z.string().default("monero/wallets"),
   WALLET_HOSTED_NAME: z.string().default("hosted/wallet"),
+  WALLET_HOSTED_PASSWORD: z.string().optional(),
   NEXT_PUBLIC_CONVEX_URL: z.string().url().optional(),
   MAX_TOTAL_FEE_BPS: optionalNumber(500),
   MAX_PAYOUT_ATOMIC: z.string().optional(),
