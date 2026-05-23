@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:lan": "next dev -H 0.0.0.0",
     "build": "npx convex dev --once && next build",
     "start": "next start",
     "worker": "tsx src/server/worker.ts",

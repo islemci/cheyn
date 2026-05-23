@@ -6,6 +6,7 @@ import {
   Copy,
   Info,
   LockKeyhole,
+  QrCode,
   RadioTower,
   ShieldCheck,
   Wallet,
@@ -62,6 +63,7 @@ export function HostedCheckout({
   const [checkout, setCheckout] = useState(initialCheckout);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [showPaymentQr, setShowPaymentQr] = useState(false);
 
   useEffect(() => {
     const interval = window.setInterval(async () => {
@@ -216,7 +218,11 @@ export function HostedCheckout({
             </div>
           ) : (
             <div className="grid gap-6 border-border border-y py-6 md:grid-cols-[168px_1fr]">
-              <div className="grid size-[168px] place-items-center rounded-md border border-border bg-white p-3">
+              <div
+                className={`size-[168px] place-items-center rounded-md border border-border bg-white p-3 ${
+                  showPaymentQr ? "grid" : "hidden md:grid"
+                }`}
+              >
                 <Image
                   src={qrDataUrl}
                   alt="Monero payment QR code"
@@ -244,6 +250,15 @@ export function HostedCheckout({
                       <Wallet />
                       Open wallet
                     </a>
+                  </Button>
+                  <Button
+                    className="md:hidden"
+                    onClick={() => setShowPaymentQr((visible) => !visible)}
+                    type="button"
+                    variant="outline"
+                  >
+                    <QrCode />
+                    {showPaymentQr ? "Hide payment QR" : "Show payment QR"}
                   </Button>
                 </div>
               </div>
