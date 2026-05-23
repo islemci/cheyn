@@ -4,14 +4,16 @@ import {
   AlertTriangle,
   CheckCircle2,
   Copy,
+  Info,
   LockKeyhole,
   RadioTower,
   ShieldCheck,
   Wallet,
+  X,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { MouseEvent, PointerEvent, ReactNode, TouchEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +49,10 @@ type HostedCheckoutProps = {
 };
 
 const completeStatuses = new Set(["confirmed", "payout_pending", "paid_out"]);
+type InfoTriggerEvent =
+  | MouseEvent<HTMLButtonElement>
+  | PointerEvent<HTMLButtonElement>
+  | TouchEvent<HTMLButtonElement>;
 
 export function HostedCheckout({
   checkout: initialCheckout,
@@ -55,6 +61,7 @@ export function HostedCheckout({
 }: HostedCheckoutProps) {
   const [checkout, setCheckout] = useState(initialCheckout);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
 
   useEffect(() => {
     const interval = window.setInterval(async () => {
@@ -114,8 +121,14 @@ export function HostedCheckout({
     window.setTimeout(() => setCopyStatus(null), 2200);
   }
 
+  function openInfoDialog(event?: InfoTriggerEvent) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setIsInfoOpen(true);
+  }
+
   return (
-    <main className="min-h-[100dvh] bg-background text-foreground">
+    <main className="min-h-[100dvh] bg-background pb-20 text-foreground">
       <div className="mx-auto grid min-h-[100dvh] w-full max-w-6xl items-center gap-10 px-4 py-10 md:grid-cols-[0.88fr_1.12fr] md:px-6">
         <section className="grid gap-7">
           <Link href="/" className="inline-flex w-fit items-center">
@@ -264,7 +277,121 @@ export function HostedCheckout({
           )}
         </section>
       </div>
+      <footer
+        className="fixed inset-x-0 z-40 flex justify-center px-4"
+        style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
+      >
+        <button
+          aria-expanded={isInfoOpen}
+          aria-haspopup="dialog"
+          className="rounded-full border border-border bg-background/95 px-4 py-2 text-muted-foreground text-sm shadow-sm backdrop-blur underline-offset-4 hover:text-foreground hover:underline"
+          onClick={openInfoDialog}
+          onPointerUp={openInfoDialog}
+          onTouchEnd={openInfoDialog}
+          type="button"
+        >
+          What is this?
+        </button>
+      </footer>
+      {isInfoOpen && (
+        <CheckoutInfoDialog onClose={() => setIsInfoOpen(false)} />
+      )}
     </main>
+  );
+}
+
+function CheckoutInfoDialog({ onClose }: { onClose: () => void }) {
+  const titleId = "checkout-info-title";
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center px-4">
+      <button
+        aria-label="Close information dialog"
+        className="absolute inset-0 bg-black/25 backdrop-blur-md dark:bg-black/55"
+        onPointerDown={onClose}
+        type="button"
+      />
+      <div
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className="relative z-10 w-full max-w-[460px] overflow-hidden rounded-xl border border-border bg-card text-left shadow-2xl"
+        role="dialog"
+      >
+        <div className="border-border border-b bg-muted/35 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-background shadow-sm">
+              <Info className="size-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-muted-foreground text-xs uppercase tracking-wide">
+                Checkout help
+              </p>
+              <h2 className="mt-1 font-semibold text-xl" id={titleId}>
+                What is Cheyn?
+              </h2>
+              <p className="mt-2 text-muted-foreground text-sm leading-6">
+                Cheyn verifies Monero payments for the merchant you are paying.
+              </p>
+            </div>
+            <button
+              aria-label="Close"
+              className="rounded-full p-2 text-muted-foreground hover:bg-background hover:text-foreground"
+              onClick={onClose}
+              type="button"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-5">
+          <InfoPanel
+            label="How it works"
+            text="Send the exact amount shown on this page from your Monero wallet. Cheyn watches for the payment and waits for enough blockchain confirmations."
+          />
+          <InfoPanel
+            label="What the merchant sees"
+            text="When the payment is confirmed, Cheyn updates the checkout status and notifies the merchant so they can complete your order."
+          />
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
+            <p className="font-medium text-amber-950 dark:text-amber-100">
+              Refunds are handled by the merchant
+            </p>
+            <p className="mt-2 text-amber-950/75 text-sm leading-6 dark:text-amber-100/75">
+              Cheyn cannot issue refunds from this page. If you paid the wrong
+              amount, sent funds after expiration, or need money returned,
+              contact the merchant directly.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex justify-end border-border border-t bg-muted/25 p-4">
+          <Button onClick={onClose} type="button">
+            Got it
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoPanel({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-4">
+      <p className="font-medium">{label}</p>
+      <p className="mt-2 text-muted-foreground text-sm leading-6">{text}</p>
+    </div>
   );
 }
 
