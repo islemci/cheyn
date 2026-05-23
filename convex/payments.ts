@@ -281,7 +281,9 @@ export const getDashboardForCurrentUser = query({
         successCallbackUrl: store.successCallbackUrl,
         cancelCallbackUrl: store.cancelCallbackUrl,
         merchantPrimaryAddress: store.merchantPrimaryAddress,
+        nextProvisioningRetryAt: store.nextProvisioningRetryAt,
         provisioningError: store.provisioningError,
+        provisioningAttempts: store.provisioningAttempts,
         provisioningProgress: store.provisioningProgress,
         provisioningStep: store.provisioningStep,
         provisioningUpdatedAt: store.provisioningUpdatedAt,
@@ -378,6 +380,7 @@ export const createStore = mutation({
           : undefined,
       provisioningUpdatedAt:
         args.paymentMode === "view_only" ? args.now : undefined,
+      provisioningAttempts: args.paymentMode === "view_only" ? 0 : undefined,
       webhookUrl: args.webhookUrl,
       successCallbackUrl: args.successCallbackUrl,
       cancelCallbackUrl: args.cancelCallbackUrl,
@@ -434,6 +437,7 @@ export const createStoreForCurrentUser = mutation({
           : undefined,
       provisioningUpdatedAt:
         args.paymentMode === "view_only" ? args.now : undefined,
+      provisioningAttempts: args.paymentMode === "view_only" ? 0 : undefined,
       webhookUrl: args.webhookUrl,
       successCallbackUrl: args.successCallbackUrl,
       cancelCallbackUrl: args.cancelCallbackUrl,
@@ -515,6 +519,8 @@ export const updateStoreProvisioningProgress = mutation({
     step: v.string(),
     status: v.optional(v.string()),
     error: v.optional(v.string()),
+    attempts: v.optional(v.number()),
+    nextRetryAt: v.optional(v.number()),
     viewOnlyWalletReference: v.optional(v.string()),
   },
   returns: v.object({ storeId: v.string() }),
@@ -528,11 +534,45 @@ export const updateStoreProvisioningProgress = mutation({
       provisioningProgress: Math.max(0, Math.min(100, args.progress)),
       provisioningStep: args.step,
       provisioningUpdatedAt: args.now,
+      provisioningAttempts: args.attempts ?? store.provisioningAttempts,
+      nextProvisioningRetryAt: args.nextRetryAt,
       status: args.status ?? store.status,
       ...(args.viewOnlyWalletReference !== undefined
         ? { viewOnlyWalletReference: args.viewOnlyWalletReference }
         : {}),
     });
+    return { storeId: args.storeId };
+  },
+});
+
+export const retryStoreProvisioningForCurrentUser = mutation({
+  args: {
+    now: v.number(),
+    storeId: v.string(),
+  },
+  returns: v.object({ storeId: v.string() }),
+  handler: async (ctx, args) => {
+    const developer = await getCurrentDeveloper(ctx);
+    const store = await ctx.db.get(args.storeId as never);
+    if (!store || store.developerId !== developer._id) {
+      throw new Error("Store not found");
+    }
+    if ((store.paymentMode ?? "hosted") !== "view_only") {
+      throw new Error("Only view-only stores can be provisioned");
+    }
+    if (store.status === "active") {
+      return { storeId: args.storeId };
+    }
+
+    await ctx.db.patch(args.storeId as never, {
+      nextProvisioningRetryAt: undefined,
+      provisioningError: undefined,
+      provisioningProgress: 5,
+      provisioningStep: "queued",
+      provisioningUpdatedAt: args.now,
+      status: "provisioning",
+    });
+
     return { storeId: args.storeId };
   },
 });
@@ -903,16 +943,22 @@ export const listScannableWalletContexts = query({
 });
 
 export const listProvisioningViewOnlyStores = query({
-  args: {},
+  args: {
+    maxAttempts: v.optional(v.number()),
+    now: v.optional(v.number()),
+  },
   returns: v.array(v.any()),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const stores = await ctx.db.query("stores").collect();
     return stores
       .filter(
         (store) =>
           store.paymentMode === "view_only" &&
-          store.status === "provisioning" &&
-          !store.viewOnlyWalletReference,
+          ["provisioning", "failed"].includes(store.status) &&
+          !store.viewOnlyWalletReference &&
+          (store.status !== "failed" ||
+            ((store.provisioningAttempts ?? 0) < (args.maxAttempts ?? 3) &&
+              (store.nextProvisioningRetryAt ?? 0) <= (args.now ?? 0))),
       )
       .map((store) => ({ id: store._id, ...store }));
   },

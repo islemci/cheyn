@@ -13,6 +13,9 @@ const refs = {
   getOrClaimDeveloperForCurrentUser: makeFunctionReference<"mutation">(
     "payments.js:getOrClaimDeveloperForCurrentUser",
   ),
+  retryStoreProvisioningForCurrentUser: makeFunctionReference<"mutation">(
+    "payments.js:retryStoreProvisioningForCurrentUser",
+  ),
   getDashboardForCurrentUser: makeFunctionReference<"query">(
     "payments.js:getDashboardForCurrentUser",
   ),

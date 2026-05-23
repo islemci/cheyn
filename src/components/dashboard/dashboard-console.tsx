@@ -44,9 +44,11 @@ type DashboardStore = {
   name: string;
   paymentMode?: "hosted" | "view_only";
   provisioningError?: string;
+  provisioningAttempts?: number;
   provisioningProgress?: number;
   provisioningStep?: string;
   provisioningUpdatedAt?: number;
+  nextProvisioningRetryAt?: number;
   restoreHeight?: number;
   settlementType?: "platform_payout" | "direct_to_wallet";
   status: string;
@@ -947,6 +949,7 @@ function StoreEditor({ store }: { store: DashboardStore }) {
   );
   const [status, setStatus] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRetryingProvisioning, setIsRetryingProvisioning] = useState(false);
 
   async function updateStore(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -977,6 +980,29 @@ function StoreEditor({ store }: { store: DashboardStore }) {
       setStatus(error instanceof Error ? error.message : "Store update failed");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function retryProvisioning() {
+    setIsRetryingProvisioning(true);
+    setStatus(null);
+
+    try {
+      const response = await fetch(
+        `/api/v1/me/stores/${store.id}/provisioning/retry`,
+        { method: "POST" },
+      );
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Failed to retry provisioning");
+      }
+      setStatus("Provisioning retry queued.");
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Provisioning retry failed",
+      );
+    } finally {
+      setIsRetryingProvisioning(false);
     }
   }
 
@@ -1019,6 +1045,18 @@ function StoreEditor({ store }: { store: DashboardStore }) {
       ) : (
         <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
           <ProvisioningProgress store={store} />
+          {store.status === "failed" && (
+            <Button
+              disabled={isRetryingProvisioning}
+              onClick={retryProvisioning}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <RotateCw />
+              {isRetryingProvisioning ? "Retrying..." : "Retry provisioning"}
+            </Button>
+          )}
           <InfoRow
             label="Merchant wallet"
             value={truncateMiddle(store.merchantPrimaryAddress)}
@@ -1102,6 +1140,12 @@ function ProvisioningProgress({ store }: { store: DashboardStore }) {
         />
       </div>
       <p className="text-muted-foreground text-xs">{step}</p>
+      <p className="text-muted-foreground text-xs">
+        Attempt {store.provisioningAttempts ?? 0} / 3
+        {store.nextProvisioningRetryAt && store.status === "failed"
+          ? ` · auto retry ${formatDate(store.nextProvisioningRetryAt)}`
+          : ""}
+      </p>
       {store.provisioningError && (
         <p className="text-destructive text-xs">{store.provisioningError}</p>
       )}
@@ -1494,6 +1538,14 @@ function formatProvisioningStep(step?: string, status?: string) {
     default:
       return "Waiting for worker";
   }
+}
+
+function formatDate(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function formatAtomic(amountAtomic: string) {

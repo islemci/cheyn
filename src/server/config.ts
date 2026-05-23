@@ -59,6 +59,8 @@ const EnvSchema = z.object({
   VIEW_KEY_ENCRYPTION_KEY: z.string().optional(),
   VIEW_KEY_ENCRYPTION_KEY_VERSION: z.string().default("v1"),
   VIEW_ONLY_DONATION_ADDRESS: z.string().optional(),
+  VIEW_ONLY_PROVISIONING_RETRY_DELAY_MS: optionalNumber(60 * 1000),
+  VIEW_ONLY_PROVISIONING_MAX_ATTEMPTS: optionalNumber(3),
   REQUIRED_CONFIRMATIONS: optionalNumber(10),
   WORKER_POLL_INTERVAL_MS: optionalNumber(30_000),
 });

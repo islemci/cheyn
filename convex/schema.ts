@@ -29,6 +29,8 @@ export default defineSchema({
     provisioningStep: v.optional(v.string()),
     provisioningError: v.optional(v.string()),
     provisioningUpdatedAt: v.optional(v.number()),
+    provisioningAttempts: v.optional(v.number()),
+    nextProvisioningRetryAt: v.optional(v.number()),
     webhookUrl: v.optional(v.string()),
     successCallbackUrl: v.optional(v.string()),
     cancelCallbackUrl: v.optional(v.string()),

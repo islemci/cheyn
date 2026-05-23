@@ -39,6 +39,7 @@ type Store = {
   merchantPrimaryAddress?: string;
   restoreHeight?: number;
   viewOnlyWalletReference?: string;
+  provisioningAttempts?: number;
   webhookUrl?: string;
   webhookSecret: string;
 };
@@ -147,9 +148,14 @@ async function refreshPriceIfDue() {
 }
 
 async function provisionViewOnlyStores() {
+  const config = getConfig();
+  const now = Date.now();
   const stores = await convex.query<Store[]>(
     convex.refs.listProvisioningViewOnlyStores,
-    {},
+    {
+      maxAttempts: config.VIEW_ONLY_PROVISIONING_MAX_ATTEMPTS,
+      now,
+    },
   );
   if (stores.length === 0) {
     return;
@@ -157,8 +163,11 @@ async function provisionViewOnlyStores() {
 
   logWorker("provisioning view-only stores", { stores: stores.length });
   for (const store of stores) {
+    const attemptNumber = (store.provisioningAttempts ?? 0) + 1;
     const updateProgress = async (args: {
+      attempts?: number;
       error?: string;
+      nextRetryAt?: number;
       progress: number;
       status?: string;
       step: string;
@@ -167,6 +176,8 @@ async function provisionViewOnlyStores() {
       convex.mutation(convex.refs.updateStoreProvisioningProgress, {
         developerId: store.developerId,
         error: args.error,
+        attempts: args.attempts,
+        nextRetryAt: args.nextRetryAt,
         now: Date.now(),
         progress: args.progress,
         status: args.status,
@@ -177,6 +188,7 @@ async function provisionViewOnlyStores() {
 
     await updateProgress({
       progress: 10,
+      attempts: attemptNumber,
       status: "provisioning",
       step: "validating_store",
     });
@@ -190,6 +202,7 @@ async function provisionViewOnlyStores() {
         storeId: store.id,
       });
       await updateProgress({
+        attempts: attemptNumber,
         error: "View-only store is missing wallet setup fields",
         progress: 100,
         status: "failed",
@@ -200,6 +213,7 @@ async function provisionViewOnlyStores() {
 
     try {
       await updateProgress({
+        attempts: attemptNumber,
         progress: 25,
         step: "decrypting_view_key",
       });
@@ -208,6 +222,7 @@ async function provisionViewOnlyStores() {
         mode: store.paymentMode ?? "view_only",
       });
       await updateProgress({
+        attempts: attemptNumber,
         progress: 45,
         step: "creating_view_only_wallet",
       });
@@ -218,11 +233,13 @@ async function provisionViewOnlyStores() {
         storeId: store.id,
       });
       await updateProgress({
+        attempts: attemptNumber,
         progress: 80,
         step: "saving_wallet_reference",
         viewOnlyWalletReference,
       });
       await updateProgress({
+        attempts: attemptNumber,
         progress: 100,
         status: "active",
         step: "ready",
@@ -237,10 +254,15 @@ async function provisionViewOnlyStores() {
         storeId: store.id,
       });
       await updateProgress({
+        attempts: attemptNumber,
         error:
           error instanceof Error
             ? error.message
             : "View-only wallet provisioning failed",
+        nextRetryAt:
+          attemptNumber >= config.VIEW_ONLY_PROVISIONING_MAX_ATTEMPTS
+            ? undefined
+            : Date.now() + config.VIEW_ONLY_PROVISIONING_RETRY_DELAY_MS,
         progress: 100,
         status: "failed",
         step: "failed",
