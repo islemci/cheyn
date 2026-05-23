@@ -47,22 +47,43 @@ export class HostedWalletBackend {
 
   async createPaymentAddress() {
     return enqueueWalletOperation(async () => {
-      await this.openHostedWallet();
-      return this.wallet.createSubaddress();
+      try {
+        return await this.wallet.createSubaddress();
+      } catch (error) {
+        if (!isWalletNotLoadedError(error)) {
+          throw error;
+        }
+        await this.openHostedWallet();
+        return this.wallet.createSubaddress();
+      }
     });
   }
 
   async scanIncomingTransfers() {
     return enqueueWalletOperation(async () => {
-      await this.openHostedWallet();
-      return this.wallet.getTransfers();
+      try {
+        return await this.wallet.getTransfers();
+      } catch (error) {
+        if (!isWalletNotLoadedError(error)) {
+          throw error;
+        }
+        await this.openHostedWallet();
+        return this.wallet.getTransfers();
+      }
     });
   }
 
   async sendPayout(args: { address: string; amountAtomic: string }) {
     return enqueueWalletOperation(async () => {
-      await this.openHostedWallet();
-      return this.wallet.transfer(args);
+      try {
+        return await this.wallet.transfer(args);
+      } catch (error) {
+        if (!isWalletNotLoadedError(error)) {
+          throw error;
+        }
+        await this.openHostedWallet();
+        return this.wallet.transfer(args);
+      }
     });
   }
 
@@ -72,6 +93,19 @@ export class HostedWalletBackend {
       password: getConfig().WALLET_HOSTED_PASSWORD,
     });
   }
+}
+
+function isWalletNotLoadedError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("no wallet") ||
+    message.includes("no wallet file") ||
+    message.includes("wallet not open") ||
+    message.includes("no wallet loaded")
+  );
 }
 
 export class ViewOnlyWalletBackend {
