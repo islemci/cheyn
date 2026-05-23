@@ -27,6 +27,10 @@ const refs = {
     "payments.js:createStoreForCurrentUser",
   ),
   updateStore: makeFunctionReference<"mutation">("payments.js:updateStore"),
+  deleteStore: makeFunctionReference<"mutation">("payments.js:deleteStore"),
+  deleteStoreForCurrentUser: makeFunctionReference<"mutation">(
+    "payments.js:deleteStoreForCurrentUser",
+  ),
   updateStoreWalletReference: makeFunctionReference<"mutation">(
     "payments.js:updateStoreWalletReference",
   ),

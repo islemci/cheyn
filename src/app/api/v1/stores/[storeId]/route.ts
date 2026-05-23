@@ -28,3 +28,26 @@ export async function PATCH(
     return handleApiError(error);
   }
 }
+
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ storeId: string }> },
+) {
+  try {
+    const developer = await requireDeveloper(request);
+    const { storeId } = await context.params;
+
+    const result = await convex.mutation<{ storeId: string }>(
+      convex.refs.deleteStore,
+      {
+        developerId: developer.id,
+        now: Date.now(),
+        storeId,
+      },
+    );
+
+    return json({ storeId: result.storeId });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}

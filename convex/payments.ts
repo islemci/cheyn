@@ -271,30 +271,32 @@ export const getDashboardForCurrentUser = query({
             : Math.round((deliveredWebhooks / webhookAttempts.length) * 1000) /
               10,
       },
-      stores: stores.map((store) => ({
-        id: store._id,
-        createdAt: store.createdAt,
-        name: store.name,
-        paymentMode: store.paymentMode ?? "hosted",
-        status: store.status,
-        webhookUrl: store.webhookUrl,
-        successCallbackUrl: store.successCallbackUrl,
-        cancelCallbackUrl: store.cancelCallbackUrl,
-        merchantPrimaryAddress: store.merchantPrimaryAddress,
-        nextProvisioningRetryAt: store.nextProvisioningRetryAt,
-        provisioningError: store.provisioningError,
-        provisioningAttempts: store.provisioningAttempts,
-        provisioningProgress: store.provisioningProgress,
-        provisioningStep: store.provisioningStep,
-        provisioningUpdatedAt: store.provisioningUpdatedAt,
-        restoreHeight: store.restoreHeight,
-        settlementType:
-          (store.paymentMode ?? "hosted") === "view_only"
-            ? "direct_to_wallet"
-            : "platform_payout",
-        viewOnlyWalletReference: store.viewOnlyWalletReference,
-        withdrawAddress: store.withdrawAddress,
-      })),
+      stores: stores
+        .filter((store) => store.status !== "deleted")
+        .map((store) => ({
+          id: store._id,
+          createdAt: store.createdAt,
+          name: store.name,
+          paymentMode: store.paymentMode ?? "hosted",
+          status: store.status,
+          webhookUrl: store.webhookUrl,
+          successCallbackUrl: store.successCallbackUrl,
+          cancelCallbackUrl: store.cancelCallbackUrl,
+          merchantPrimaryAddress: store.merchantPrimaryAddress,
+          nextProvisioningRetryAt: store.nextProvisioningRetryAt,
+          provisioningError: store.provisioningError,
+          provisioningAttempts: store.provisioningAttempts,
+          provisioningProgress: store.provisioningProgress,
+          provisioningStep: store.provisioningStep,
+          provisioningUpdatedAt: store.provisioningUpdatedAt,
+          restoreHeight: store.restoreHeight,
+          settlementType:
+            (store.paymentMode ?? "hosted") === "view_only"
+              ? "direct_to_wallet"
+              : "platform_payout",
+          viewOnlyWalletReference: store.viewOnlyWalletReference,
+          withdrawAddress: store.withdrawAddress,
+        })),
       webhookAttempts: webhookAttempts
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 25)
@@ -481,6 +483,56 @@ export const updateStore = mutation({
       ...(args.cancelCallbackUrl !== undefined
         ? { cancelCallbackUrl: args.cancelCallbackUrl ?? undefined }
         : {}),
+    });
+
+    return { storeId: args.storeId };
+  },
+});
+
+export const deleteStore = mutation({
+  args: {
+    developerId: v.string(),
+    now: v.number(),
+    storeId: v.string(),
+  },
+  returns: v.object({ storeId: v.string() }),
+  handler: async (ctx, args) => {
+    const store = await ctx.db.get(args.storeId as never);
+    if (!store || store.developerId !== args.developerId) {
+      throw new Error("Store not found");
+    }
+
+    await ctx.db.patch(args.storeId as never, {
+      nextProvisioningRetryAt: undefined,
+      provisioningError: undefined,
+      provisioningStep: "deleted",
+      provisioningUpdatedAt: args.now,
+      status: "deleted",
+    });
+
+    return { storeId: args.storeId };
+  },
+});
+
+export const deleteStoreForCurrentUser = mutation({
+  args: {
+    now: v.number(),
+    storeId: v.string(),
+  },
+  returns: v.object({ storeId: v.string() }),
+  handler: async (ctx, args) => {
+    const developer = await getCurrentDeveloper(ctx);
+    const store = await ctx.db.get(args.storeId as never);
+    if (!store || store.developerId !== developer._id) {
+      throw new Error("Store not found");
+    }
+
+    await ctx.db.patch(args.storeId as never, {
+      nextProvisioningRetryAt: undefined,
+      provisioningError: undefined,
+      provisioningStep: "deleted",
+      provisioningUpdatedAt: args.now,
+      status: "deleted",
     });
 
     return { storeId: args.storeId };

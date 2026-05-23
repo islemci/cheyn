@@ -16,6 +16,7 @@ import {
   RotateCw,
   ShieldCheck,
   Store,
+  Trash2,
   Wallet,
   Webhook,
 } from "lucide-react";
@@ -949,6 +950,7 @@ function StoreEditor({ store }: { store: DashboardStore }) {
   );
   const [status, setStatus] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isRetryingProvisioning, setIsRetryingProvisioning] = useState(false);
 
   async function updateStore(event: FormEvent<HTMLFormElement>) {
@@ -1003,6 +1005,33 @@ function StoreEditor({ store }: { store: DashboardStore }) {
       );
     } finally {
       setIsRetryingProvisioning(false);
+    }
+  }
+
+  async function deleteStore() {
+    const confirmed = window.confirm(
+      `Delete store "${store.name}"? Existing checkouts and payouts stay in history, but new checkouts cannot be created for this store.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setStatus(null);
+
+    try {
+      const response = await fetch(`/api/v1/me/stores/${store.id}`, {
+        method: "DELETE",
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Failed to delete store");
+      }
+      setStatus("Store deleted.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Store delete failed");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -1107,9 +1136,24 @@ function StoreEditor({ store }: { store: DashboardStore }) {
           {status}
         </p>
       )}
-      <Button disabled={isSaving} type="submit" variant="outline">
-        {isSaving ? "Saving..." : "Save changes"}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          disabled={isSaving || isDeleting}
+          type="submit"
+          variant="outline"
+        >
+          {isSaving ? "Saving..." : "Save changes"}
+        </Button>
+        <Button
+          disabled={isDeleting}
+          onClick={deleteStore}
+          type="button"
+          variant="outline"
+        >
+          <Trash2 />
+          {isDeleting ? "Deleting..." : "Delete store"}
+        </Button>
+      </div>
     </form>
   );
 }
