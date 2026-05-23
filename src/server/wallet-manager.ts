@@ -31,11 +31,15 @@ export function settlementTypeForMode(mode: PaymentMode): SettlementType {
 }
 
 function hostedWalletReference() {
-  return getConfig().WALLET_HOSTED_NAME;
+  return sanitizeWalletFilename(getConfig().WALLET_HOSTED_NAME);
 }
 
 function viewOnlyWalletReference(storeId: string) {
-  return `view-only/store_${storeId}/wallet`;
+  return sanitizeWalletFilename(`view_only_store_${storeId}`);
+}
+
+function sanitizeWalletFilename(value: string) {
+  return value.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "_");
 }
 
 export class HostedWalletBackend {
