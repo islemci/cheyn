@@ -15,8 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "cheyn",
-  description: "Monero checkout, confirmation, payout, and webhook API.",
+  title: "cheyn - Monero checkout infrastructure",
+  description:
+    "Hosted XMR checkout pages, confirmation tracking, payout controls, and signed callbacks for software teams.",
   icons: {
     icon: "/c.svg",
     shortcut: "/c.svg",

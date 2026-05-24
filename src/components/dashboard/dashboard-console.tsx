@@ -666,14 +666,12 @@ function CheckoutsTab({
                     <tr key={checkout.id} className="border-border border-t">
                       <td className="p-3 font-mono">{checkout.id}</td>
                       <td className="p-3">
-                        <div className="grid gap-1">
-                          <Badge variant="muted">
-                            {formatPaymentMode(checkout.mode)}
-                          </Badge>
-                          <span className="text-muted-foreground text-xs">
-                            {formatSettlementType(checkout.settlementType)}
-                          </span>
-                        </div>
+                        <Badge
+                          variant="muted"
+                          className="h-5 px-1.5 text-[10px]"
+                        >
+                          {formatPaymentMode(checkout.mode)}
+                        </Badge>
                       </td>
                       <td className="p-3">
                         {formatCheckoutExpected(checkout)}
@@ -1550,7 +1548,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 function formatPaymentMode(mode?: string) {
-  return mode === "view_only" ? "View-only" : "Hosted";
+  return mode === "view_only" ? "Direct" : "Hosted";
 }
 
 function formatSettlementType(settlementType?: string) {
